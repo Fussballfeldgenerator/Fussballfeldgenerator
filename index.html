@@ -271,7 +271,7 @@ document.getElementById('geojson').onclick=exportBothGeoJSON;
 function exportBothGeoJSON(){
   if(!lastResult){alert("Kein Feld erzeugt.");return;}
   const pt=(x,y)=>{const g=toLL(x,y);return[g.lon,g.lat]}; // [lon,lat]
-  const base=(fnameInput.value||"SW_Maps_Import_FFG").trim().replace(/[\\/:*?"<>|]+/g,"_");
+  const base=(fnameInput.value||"Dateiname").trim().replace(/[\\/:*?"<>|]+/g,"_");
   const ts=new Date().toISOString().replace(/[:.]/g,"-");
 
   // Punkte
