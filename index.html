@@ -111,10 +111,31 @@ function lineIntersection(a1,a2,b1,b2){
   const py=((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4))/den;
   return {x:px,y:py};
 }
+/* Schnittpunkte Kreis (Mittelkreis) mit Linie (Mittellinie) */
+function circleLineIntersections(C,R,A,B){
+  // Parametrische Linie P(t)=A + t*(B-A)
+  const dx=B.x-A.x, dy=B.y-A.y;
+  const fx=A.x-C.x, fy=A.y-C.y;
+  const a=dx*dx+dy*dy;
+  const b=2*(fx*dx+fy*dy);
+  const c=fx*fx+fy*fy-R*R;
+  const disc=b*b-4*a*c;
+  if(disc<0) return [];
+  if(Math.abs(disc)<1e-9){ // tangential
+    const t=-b/(2*a);
+    return [{x:A.x+t*dx, y:A.y+t*dy}];
+  }
+  const s=Math.sqrt(disc);
+  const t1=(-b+s)/(2*a), t2=(-b-s)/(2*a);
+  return [
+    {x:A.x+t1*dx, y:A.y+t1*dy},
+    {x:A.x+t2*dx, y:A.y+t2*dy}
+  ];
+}
 
 /* ---- Großfeld-Geometrie (Tor 7,32 m) ---- */
 function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
-  const torHalb=7.32/2; // 3.66 m
+  const torHalb=7.32/2;
   const tor_r={x:mitte.x+nx*torHalb,y:mitte.y+ny*torHalb};
   const tor_l={x:mitte.x-nx*torHalb,y:mitte.y-ny*torHalb};
   addPt(mitte,`Torlinienmittelpunkt ${prefix}`,out);
@@ -246,11 +267,15 @@ function recompute(){
   const an=mid(mu,mo); addPt(an,"Anstoßpunkt",out);
   addPoly(circle(an,9.15,96),"Mittelkreis",out);
 
-  // ➕ NEU: Schnittpunkte Mittellinie mit Seitenlinien
+  // ✚ Schnittpunkte Mittellinie ↔ Seitenlinien (Großfeld)
   const spR=lineIntersection(UR,OR,ml,mr);
   const spL=lineIntersection(UL,OL,ml,mr);
   if(spR) addPt(spR,"Schnittpunkt Mittellinie & Seitenlinie rechts",out);
   if(spL) addPt(spL,"Schnittpunkt Mittellinie & Seitenlinie links",out);
+
+  // ✚ Schnittpunkte Mittelkreis ↔ Mittellinie
+  const circleHits=circleLineIntersections(an,9.15,ml,mr);
+  circleHits.forEach((p,i)=>addPt(p,`Schnittpunkt Mittelkreis & Mittellinie ${i===0?'(1)':'(2)'}`,out));
 
   // Großfeld-Torbereiche
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
@@ -262,8 +287,14 @@ function recompute(){
     const k_oben ={x:mo.x-ux*16.5,y:mo.y-uy*16.5};
     const k1=drawKleinfeld(k_unten,ux,uy,nx,ny,"unten",out);
     const k2=drawKleinfeld(k_oben,-ux,-uy,nx,ny,"oben",out);
+
+    // Verbindungslinien & ✚ Kleinfeld-Schnittpunkte mit Mittellinie
     addLine(k1.ef_r,k2.ef_r,"Kleinfeld Verbindung rechts",out);
     addLine(k1.ef_l,k2.ef_l,"Kleinfeld Verbindung links",out);
+    const spKr=lineIntersection(k1.ef_r,k2.ef_r,ml,mr);
+    const spKl=lineIntersection(k1.ef_l,k2.ef_l,ml,mr);
+    if(spKr) addPt(spKr,"Schnittpunkt Kleinfeld-Verbindung & Mittellinie rechts",out);
+    if(spKl) addPt(spKl,"Schnittpunkt Kleinfeld-Verbindung & Mittellinie links",out);
   }
 
   lastResult=out;
