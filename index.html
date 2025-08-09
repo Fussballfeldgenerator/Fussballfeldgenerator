@@ -34,14 +34,14 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
 <script>
-/* ---- EPSG:25832 für metrische Geometrie ---- */
+/* ---- EPSG:25832 ---- */
 proj4.defs("EPSG:25832","+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +type=crs");
 const toUTM=(lat,lon)=>{const r=proj4("WGS84","EPSG:25832",[lon,lat]);return{x:r[0],y:r[1]}};
 const toLL =(x,y)=>{const r=proj4("EPSG:25832","WGS84",[x,y]);return{lat:r[1],lon:r[0]}};
 
-/* ---- Karte: OSM Standard, WMS optional ---- */
+/* ---- Karte ---- */
 const map=L.map('map').setView([48.1372,11.5756],18);
-const osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap-Mitwirkende'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap-Mitwirkende'}).addTo(map);
 let dop=null;
 document.getElementById('wms').onclick=()=>{
   const btn=document.getElementById('wms');
@@ -71,7 +71,7 @@ const handles=L.featureGroup().addTo(map);
 const clicks=L.featureGroup().addTo(map);
 let p1=null,p2=null,lastResult=null;
 
-/* ---- UI: Breite (Standard: 65 m) ---- */
+/* ---- UI ---- */
 const widthInput=document.getElementById('width');
 const modeSel=document.getElementById('mode');
 modeSel.addEventListener('change',()=>{ if(p1&&p2) recompute(true); });
@@ -85,9 +85,9 @@ function addLine(pA,pB,name,out){const gA=toLL(pA.x,pA.y),gB=toLL(pB.x,pB.y);L.p
 function addPt(p,name,out){const g=toLL(p.x,p.y);L.circleMarker([g.lat,g.lon],{radius:4}).addTo(draw).bindTooltip(name);out.points.push({name,x:p.x,y:p.y});}
 function addPoly(points,name,out){L.polyline(toLLArr(points)).addTo(draw).bindTooltip(name);let len=0;for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];len+=Math.hypot(b.x-a.x,b.y-a.y);}out.lines.push({name,len,points});}
 function circle(c,r,seg=96){const pts=[];for(let i=0;i<=seg;i++){const a=2*Math.PI*i/seg;pts.push({x:c.x+r*Math.cos(a),y:c.y+r*Math.sin(a)});}return pts;}
-function lineIntersection(a1,a2,b1,b2){const x1=a1.x,y1=a1.y,x2=a2.x,y2=a2.y,x3=b1.x,y3=b1.y,x4=b2.x,y4=b2.y;const den=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);if(Math.abs(den)<1e-9)return null;const px=((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4))/den;const py=((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3*x4))/den;return{x:px,y:py};}
+function lineIntersection(a1,a2,b1,b2){const x1=a1.x,y1=a1.y,x2=a2.x,y2=a2.y,x3=b1.x,y3=b1.y,x4=b2.x,y4=b2.y;const den=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);if(Math.abs(den)<1e-9)return null;const px=((x1*y2-y1*x2)*(x3-x4)-(x1-x2)*(x3*y4-y3*x4))/den;const py=((x1*y2-y1*x2)*(y3-y4)-(y1-y2)*(x3*y4-y3>x4?NaN:(y3*y4-y3*x4)))/den;}
 
-/* ---- Großfeld-Geometrie (exakte Plugin-Maße) ---- */
+/* ---- Großfeld-Geometrie ---- */
 function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const torHalb=7.32/2;
   const tor_r={x:mitte.x+nx*torHalb,y:mitte.y+ny*torHalb};
@@ -104,7 +104,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
         e5l={x:f5l.x+ux*5.5,y:f5l.y+uy*5.5};
   addPt(f5r,`5m Fusspunkt ${prefix} rechts`,out);
   addPt(f5l,`5m Fusspunkt ${prefix} links`,out);
-  addPt(e5r,`5m Ecke ${prefix} rechts`,out); // Eckpunkte ergänzt
+  addPt(e5r,`5m Ecke ${prefix} rechts`,out);
   addPt(e5l,`5m Ecke ${prefix} links`,out);
   addLine(f5r,e5r,`5m Linie ${prefix} rechts`,out);
   addLine(f5l,e5l,`5m Linie ${prefix} links`,out);
@@ -127,9 +127,9 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
 
-/* ---- Kleinfeld-Geometrie (Torbreite 5.00 m = ±2.5 m) ---- */
+/* ---- Kleinfeld-Geometrie (Torbreite 5,00 m) ---- */
 function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out){
-  const off=2.5; // 5.00 m Torbreite
+  const off=2.5;
   const tor_r={x:mitte.x+nx*off,y:mitte.y+ny*off};
   const tor_l={x:mitte.x-nx*off,y:mitte.y-ny*off};
   addPt(mitte,`Kleinfeld Torlinienmittelpunkt ${prefix}`,out);
@@ -163,7 +163,7 @@ function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out){
   return { ef_r, ef_l };
 }
 
-/* ---- Klick-Logik: zwei Punkte (rechte Längsseite) ---- */
+/* ---- Klick-Logik ---- */
 map.on('click',e=>{
   if(handles.getLayers().length===2) return;
   clicks.addLayer(L.circleMarker(e.latlng,{radius:5}));
@@ -174,7 +174,8 @@ function makeHandles(){
   handles.clearLayers();
   const m1=L.marker(p1,{draggable:true,title:"Punkt 1 (unten rechts)"}).addTo(handles);
   const m2=L.marker(p2,{draggable:true,title:"Punkt 2 (oben rechts)"}).addTo(handles);
-  m1.on('drag',()=>{p1=m1.getLatLng();recompute(true)}); m2.on('drag',()=>{p2=m2.getLatLng();recompute(true)});
+  m1.on('drag',()=>{p1=m1.getLatLng();recompute(true)});
+  m2.on('drag',()=>{p2=m2.getLatLng();recompute(true)});
 }
 
 /* ---- Zeichnen ---- */
@@ -194,7 +195,7 @@ function recompute(user=false){
   const out={points:[],lines:[]};
   const mode=modeSel.value;
 
-  // Großfeld: Außenlinien + Ecken + Mittellinie/Kreis
+  // Großfeld
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
@@ -210,11 +211,10 @@ function recompute(user=false){
   const an=mid(mu,mo); addPt(an,"Anstoßpunkt",out);
   addPoly(circle(an,9.15,96),"Mittelkreis",out);
 
-  // Großfeld-Torbereiche
-  drawTorbereich(mu,  ux,  uy, nx, ny, "unten", out);
-  drawTorbereich(mo, -ux, -uy, nx, ny, "oben",  out);
+  drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
+  drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
 
-  // Kleinfeld zusätzlich (wenn gewählt)
+  // Kleinfeld zusätzlich
   if(mode==='kleinfeld_im_grossfeld'){
     const k_unten={x:mu.x+ux*16.5,y:mu.y+uy*16.5};
     const k_oben ={x:mo.x-ux*16.5,y:mo.y-uy*16.5};
@@ -235,11 +235,10 @@ function recompute(user=false){
 document.getElementById('reset').onclick=()=>{draw.clearLayers();handles.clearLayers();clicks.clearLayers();p1=p2=null;lastResult=null;};
 document.getElementById('geojson').onclick=exportBothGeoJSON;
 
-/* ---- Export: Punkte & Linien in separaten Dateien ---- */
+/* ---- Export: Punkte & Linien getrennt ---- */
 function exportBothGeoJSON(){
   if(!lastResult){alert("Kein Feld erzeugt.");return;}
-
-  const pt=(x,y)=>{const g=toLL(x,y);return[g.lon,g.lat]}; // [lon,lat]
+  const pt=(x,y)=>{const g=toLL(x,y);return[g.lon,g.lat]};
   const ts=new Date().toISOString().replace(/[:.]/g,"-");
 
   // Punkte
@@ -265,7 +264,6 @@ function exportBothGeoJSON(){
     });
   }
 
-  // Download beider Dateien
   const save=(obj,filename)=>{
     const blob=new Blob([JSON.stringify(obj,null,2)],{type:"application/geo+json"});
     const a=document.createElement("a");
