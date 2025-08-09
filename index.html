@@ -7,13 +7,25 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
   html,body,#map{height:100%;margin:0}
-  .ctrl{position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#fff;padding:.5rem .6rem;border-radius:.6rem;box-shadow:0 2px 12px rgba(0,0,0,.18);z-index:1000;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
-  button,select,input{padding:.45rem .6rem;border:1px solid #d1d5db;border-radius:.5rem;background:#fff;cursor:pointer}
+  .ctrl{
+    position:fixed;top:8px;left:50%;transform:translateX(-50%);
+    background:#fff;padding:.35rem .45rem;border-radius:.5rem;
+    box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:1000;
+    display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;font-size:.84rem
+  }
+  button,select,input{
+    padding:.28rem .42rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;cursor:pointer;
+    font-size:.84rem;line-height:1.1
+  }
   .primary{background:#0ea5e9;border-color:#0284c7;color:#fff}
-  .hint{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:.35rem .55rem;border-radius:.45rem;z-index:1000;font-size:.85rem;opacity:.9}
-  label{display:flex;gap:.4rem;align-items:center}
-  input[type=number]{width:6.5rem}
-  input[type=text]{width:16rem}
+  .hint{
+    position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+    background:#111827;color:#fff;padding:.28rem .45rem;border-radius:.4rem;z-index:1000;font-size:.8rem;opacity:.9
+  }
+  label{display:flex;gap:.35rem;align-items:center}
+  input[type=number]{width:5.8rem}
+  input[type=text]{width:13rem}
+  @media (max-width:480px){ .ctrl{font-size:.8rem} button,select,input{font-size:.8rem} input[type=text]{width:11rem} }
 </style>
 </head>
 <body>
@@ -21,18 +33,18 @@
 
 <div class="ctrl">
   <button id="loc" class="primary">Standort</button>
-  <button id="wms">Orthofoto (WMS) an</button>
+  <button id="wms">Orthofoto</button>
   <select id="mode" title="Modus">
     <option value="grossfeld" selected>Großfeld</option>
-    <option value="kleinfeld_im_grossfeld">Großfeld + Kleinfeld</option>
+    <option value="kleinfeld_im_grossfeld">+ Kleinfeld</option>
   </select>
-  <label>Länge (m): <input id="length" type="number" step="1" min="1" value=""></label>
-  <label>Breite (m): <input id="width" type="number" step="0.1" value="65"></label>
-  <label>Dateiname: <input id="fname" type="text" value="SW_Maps_Import_FFG"></label>
+  <label>L (m): <input id="length" type="number" step="1" min="1" value=""></label>
+  <label>B (m): <input id="width" type="number" step="0.1" value="65"></label>
+  <label>Filename: <input id="fname" type="text" value="X-Platz_SVU"></label>
   <button id="reset">Neu</button>
-  <button id="geojson">Export (Punkte & Linien)</button>
+  <button id="geojson">Export</button>
 </div>
-<div class="hint">Zwei Punkte der rechten Längsseite klicken: 1 = Start (unten rechts), 2 = Richtung (oben rechts).</div>
+<div class="hint">Zwei Punkte der rechten Längsseite: 1 = Start (unten rechts), 2 = Richtung (oben rechts).</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
@@ -46,21 +58,16 @@ const toLL =(x,y)=>{const r=proj4("EPSG:25832","WGS84",[x,y]);return{lat:r[1],lo
 const map=L.map('map').setView([48.1372,11.5756],18);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap-Mitwirkende'}).addTo(map);
 
-let dop=null; // DOP20 WMS (transparentes Overlay, 1.1.1)
+let dop=null; // DOP20 WMS (transparent, 1.1.1)
 document.getElementById('wms').onclick=()=>{
   const btn=document.getElementById('wms');
-  if(dop){map.removeLayer(dop);dop=null;btn.textContent="Orthofoto (WMS) an";return;}
+  if(dop){map.removeLayer(dop);dop=null;btn.textContent="Orthofoto";return;}
   dop=L.tileLayer.wms('https://geoservices.bayern.de/od/wms/dop/v1/dop20?',{
-    layers:'by_dop20c',
-    version:'1.1.1',
-    format:'image/png',
-    transparent:true,
-    uppercase:true,
-    tileSize:256,
+    layers:'by_dop20c',version:'1.1.1',format:'image/png',transparent:true,uppercase:true,tileSize:256,
     attribution:'© LDBV DOP20 (WMS) CC BY 4.0'
   }).addTo(map);
-  let err=0; dop.on('tileerror',()=>{ if(++err===3){ map.removeLayer(dop); dop=null; alert('Orthofoto WMS nicht erreichbar oder zu weit reingezoomt – bleibe bei OSM.'); btn.textContent="Orthofoto (WMS) an"; }});
-  btn.textContent="Orthofoto (WMS) aus";
+  let err=0; dop.on('tileerror',()=>{ if(++err===3){ map.removeLayer(dop); dop=null; alert('Orthofoto WMS nicht erreichbar/zu hoher Zoom – bleibe bei OSM.'); btn.textContent="Orthofoto"; }});
+  btn.textContent="Orthofoto aus";
 };
 
 /* ---- Standort ---- */
@@ -145,7 +152,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
 
-/* ---- Kleinfeld (Tor 5,00 m = ±2,5 m) ---- */
+/* ---- Kleinfeld (Tor 5,00 m) ---- */
 function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out){
   const off=2.5;
   const tor_r={x:mitte.x+nx*off,y:mitte.y+ny*off};
@@ -181,19 +188,16 @@ function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out){
   return { ef_r, ef_l };
 }
 
-/* ---- Klick-Logik: 2 Punkte definieren Start + Richtung ---- */
+/* ---- Klick-Logik: 2 Punkte = Start + Richtung ---- */
 map.on('click',e=>{
   if(handles.getLayers().length===2) return;
   clicks.addLayer(L.circleMarker(e.latlng,{radius:5}));
   if(!p1){ p1=e.latlng; }
   else{
-    p2=e.latlng;
-    makeHandles();
-
-    // gemessene Länge (Klickstrecke) als Default runden
+    p2=e.latlng; makeHandles();
     const P1=toUTM(p1.lat,p1.lng), P2=toUTM(p2.lat,p2.lng);
     const L=Math.hypot(P2.x-P1.x,P2.y-P1.y);
-    lengthInput.value = String(Math.round(L)); // ganze Meter
+    lengthInput.value=String(Math.round(L)); // ganze Meter Default
     recompute(true);
   }
 });
@@ -201,24 +205,24 @@ function makeHandles(){
   handles.clearLayers();
   const m1=L.marker(p1,{draggable:true,title:"Punkt 1 (Start, unten rechts)"}).addTo(handles);
   const m2=L.marker(p2,{draggable:true,title:"Punkt 2 (Richtung, oben rechts)"}).addTo(handles);
-  m1.on('drag',()=>{ p1=m1.getLatLng(); recompute(true); });
-  m2.on('drag',()=>{ p2=m2.getLatLng(); recompute(true); });
+  m1.on('drag',()=>{p1=m1.getLatLng();recompute(true)});
+  m2.on('drag',()=>{p2=m2.getLatLng();recompute(true)});
 }
 
-/* ---- Zeichnen: P1 als Start, u aus P1->P2, Länge = Eingabe ---- */
-function recompute(user=false){
+/* ---- Zeichnen ---- */
+function recompute(){
   if(!p1||!p2) return;
   draw.clearLayers();
 
   const P1=toUTM(p1.lat,p1.lng), P2=toUTM(p2.lat,p2.lng);
-  const {ux,uy,L:measured}=norm(P2.x-P1.x,P2.y-P1.y);
-  const len = Math.max(1, Math.round(parseFloat(lengthInput.value||measured))); // ganze Meter
+  const {ux,uy}=norm(P2.x-P1.x,P2.y-P1.y);
+  const len=Math.max(1,Math.round(parseFloat(lengthInput.value||"0")||0));
   const nx=-uy, ny=ux;
   const W=parseFloat(widthInput.value||"65");
 
-  // Lange Seite: von Start P1 in Richtung P2 mit Länge 'len'
+  // Außenrechteck aus Start+Richtung+Maßen
   const UR={x:P1.x,y:P1.y};                         // unten rechts (Start)
-  const OR={x:P1.x + ux*len, y:P1.y + uy*len};      // oben rechts (nach Länge)
+  const OR={x:P1.x+ux*len,y:P1.y+uy*len};           // oben rechts
   const OL={x:OR.x+nx*W,y:OR.y+ny*W};
   const UL={x:UR.x+nx*W,y:UR.y+ny*W};
 
@@ -235,12 +239,18 @@ function recompute(user=false){
   addPt(OL,"Eckfahne oben links",out);
   addPt(OR,"Eckfahne oben rechts",out);
 
-  // Mittellinie + Mittelkreis
+  // Mittellinie & Mittelkreis
   const mu=mid(UL,UR), mo=mid(OL,OR);
   const ml=mid(UL,OL), mr=mid(UR,OR);
   addLine(ml,mr,"Mittellinie",out);
   const an=mid(mu,mo); addPt(an,"Anstoßpunkt",out);
   addPoly(circle(an,9.15,96),"Mittelkreis",out);
+
+  // ➕ NEU: Schnittpunkte Mittellinie mit Seitenlinien
+  const spR=lineIntersection(UR,OR,ml,mr);
+  const spL=lineIntersection(UL,OL,ml,mr);
+  if(spR) addPt(spR,"Schnittpunkt Mittellinie & Seitenlinie rechts",out);
+  if(spL) addPt(spL,"Schnittpunkt Mittellinie & Seitenlinie links",out);
 
   // Großfeld-Torbereiche
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
@@ -254,10 +264,6 @@ function recompute(user=false){
     const k2=drawKleinfeld(k_oben,-ux,-uy,nx,ny,"oben",out);
     addLine(k1.ef_r,k2.ef_r,"Kleinfeld Verbindung rechts",out);
     addLine(k1.ef_l,k2.ef_l,"Kleinfeld Verbindung links",out);
-    const sp_r=lineIntersection(k1.ef_r,k2.ef_r,ml,mr);
-    const sp_l=lineIntersection(k1.ef_l,k2.ef_l,ml,mr);
-    if(sp_r) addPt(sp_r,"Schnittpunkt Verbindung rechts & Mittellinie",out);
-    if(sp_l) addPt(sp_l,"Schnittpunkt Verbindung links & Mittellinie",out);
   }
 
   lastResult=out;
@@ -270,18 +276,14 @@ document.getElementById('geojson').onclick=exportBothGeoJSON;
 /* ---- Export: Punkte & Linien getrennt, Dateiname frei wählbar ---- */
 function exportBothGeoJSON(){
   if(!lastResult){alert("Kein Feld erzeugt.");return;}
-  const pt=(x,y)=>{const g=toLL(x,y);return[g.lon,g.lat]}; // [lon,lat]
-  const base=(fnameInput.value||"Dateiname").trim().replace(/[\\/:*?"<>|]+/g,"_");
+  const pt=(x,y)=>{const g=toLL(x,y);return[g.lon,g.lat]};
+  const base=(fnameInput.value||"X-Platz_SVU").trim().replace(/[\\/:*?"<>|]+/g,"_");
   const ts=new Date().toISOString().replace(/[:.]/g,"-");
 
   // Punkte
   const fcPts={type:"FeatureCollection",features:[]};
   for(const p of lastResult.points){
-    fcPts.features.push({
-      type:"Feature",
-      properties:{name:p.name,type:"point"},
-      geometry:{type:"Point",coordinates:pt(p.x,p.y)}
-    });
+    fcPts.features.push({type:"Feature",properties:{name:p.name,type:"point"},geometry:{type:"Point",coordinates:pt(p.x,p.y)}});
   }
   // Linien
   const fcLines={type:"FeatureCollection",features:[]};
@@ -299,11 +301,7 @@ function exportBothGeoJSON(){
 
   const save=(obj,filename)=>{
     const blob=new Blob([JSON.stringify(obj,null,2)],{type:"application/geo+json"});
-    const a=document.createElement("a");
-    a.href=URL.createObjectURL(blob);
-    a.download=filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href);
   };
   save(fcPts,   `${base}_points_${ts}.geojson`);
   save(fcLines, `${base}_lines_${ts}.geojson`);
