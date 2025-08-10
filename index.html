@@ -13,16 +13,16 @@
     box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:1000;
     display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;font-size:.84rem
   }
-  button,select,input{
+  button,select,input,label{
     padding:.28rem .42rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;cursor:pointer;
     font-size:.84rem;line-height:1.1
   }
+  label{display:flex;gap:.35rem;align-items:center;border:none;padding:0;background:transparent}
   .primary{background:#0ea5e9;border-color:#0284c7;color:#fff}
   .hint{
     position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
     background:#111827;color:#fff;padding:.28rem .45rem;border-radius:.4rem;z-index:1000;font-size:.8rem;opacity:.9
   }
-  label{display:flex;gap:.35rem;align-items:center}
   input[type=number]{width:5.8rem}
   input[type=text]{width:13rem}
   @media (max-width:480px){ .ctrl{font-size:.8rem} button,select,input{font-size:.8rem} input[type=text]{width:11rem} }
@@ -41,18 +41,22 @@
     <option value="kleinfeld">Kleinfeld (separat)</option>
   </select>
 
-  <select id="kfPreset" title="Kleinfeld-Presets" style="display:none">
+  <!-- Kleinfeld-Presets mit Altersklassen-Hinweis -->
+  <select id="kfPreset" title="Kleinfeld-Presets" disabled>
     <option value="">Preset wählen…</option>
-    <option value="60x40">60 × 40 m</option>
-    <option value="55x35">55 × 35 m</option>
-    <option value="50x30">50 × 30 m</option>
-    <option value="45x27">45 × 27 m</option>
-    <option value="40x25">40 × 25 m</option>
-    <option value="35x20">35 × 20 m</option>
+    <option value="60x40">60 × 40 m – 7er-Feld (D-Junioren, Erw. 7v7)</option>
+    <option value="55x35">55 × 35 m – 7er-Feld (E/F-Junioren 7v7)</option>
+    <option value="50x30">50 × 30 m – 5er-Feld (G-Junioren/Bambini)</option>
+    <option value="45x27">45 × 27 m – 5er-Feld (FUNiño/F-Junioren)</option>
+    <option value="40x25">40 × 25 m – 4er/5er (Training/Turnier)</option>
+    <option value="35x20">35 × 20 m – FUNiño (3v3, Bambini)</option>
   </select>
 
   <label>L (m): <input id="length" type="number" step="1" min="1" value=""></label>
   <label>B (m): <input id="width" type="number" step="0.1" value="65"></label>
+
+  <label><input type="checkbox" id="showCenter" checked> Mittelkreis</label>
+
   <label>Filename: <input id="fname" type="text" value="X-Platz_SVU"></label>
   <button id="reset">Neu</button>
   <button id="geojson">Export</button>
@@ -107,21 +111,26 @@ const modeSel=document.getElementById('mode');
 const fnameInput=document.getElementById('fname');
 const lengthInput=document.getElementById('length');
 const kfPreset=document.getElementById('kfPreset');
+const showCenter=document.getElementById('showCenter');
 
 modeSel.addEventListener('change',()=>{
   const isKF = modeSel.value==='kleinfeld';
-  kfPreset.style.display = isKF ? '' : 'none';
-  if(p1&&p2) recompute(true);
+  kfPreset.disabled = !isKF;
+  // Im Großfeld sind Länge/ Breite frei; im KF ohne Preset auch.
+  if (!isKF) { lengthInput.disabled = false; }
+  if (p1 && p2) recompute(true);
 });
 kfPreset.addEventListener('change',()=>{
-  if(!kfPreset.value) return;
+  if (!kfPreset.value) { lengthInput.disabled = false; if(p1&&p2) recompute(true); return; }
   const [L,W]=kfPreset.value.split('x').map(Number);
-  lengthInput.value=String(L);
-  widthInput.value =String(W);
-  if(p1&&p2) recompute(true);
+  lengthInput.value = String(L);
+  widthInput.value  = String(W);
+  lengthInput.disabled = true; // Preset fixiert Länge
+  if (p1 && p2) recompute(true);
 });
 widthInput.addEventListener('input',()=>{ if(p1&&p2) recompute(true); });
 lengthInput.addEventListener('input',()=>{ if(p1&&p2) recompute(true); });
+showCenter.addEventListener('change',()=>{ if(p1&&p2) recompute(true); });
 
 /* ---- Helpers ---- */
 const norm=(dx,dy)=>{const L=Math.hypot(dx,dy)||1;return{ux:dx/L,uy:dy/L,L}};
@@ -229,11 +238,19 @@ map.on('click',e=>{
   if(!p1){ p1=e.latlng; }
   else{
     p2=e.latlng; makeHandles();
+
     const P1=toUTM(p1.lat,p1.lng), P2=toUTM(p2.lat,p2.lng);
-    const L=Math.hypot(P2.x-P1.x,P2.y-P1.y);
-    lengthInput.value=String(Math.round(L)); // ganze Meter Default
-    if(modeSel.value==='kleinfeld'){ // sinnvolle Defaultbreite im Kleinfeld
-      if(!widthInput.value || parseFloat(widthInput.value)<=0) widthInput.value="40";
+    const Lm=Math.hypot(P2.x-P1.x,P2.y-P1.y);
+
+    // Wenn Kleinfeld + Preset aktiv: Länge/Breite aus Preset, sonst gemessene Länge runden
+    if (modeSel.value==='kleinfeld' && kfPreset.value){
+      const [L,W]=kfPreset.value.split('x').map(Number);
+      lengthInput.value = String(L);
+      widthInput.value  = String(W);
+      lengthInput.disabled = true;
+    } else {
+      lengthInput.value = String(Math.round(Lm));
+      lengthInput.disabled = false;
     }
     recompute(true);
   }
@@ -246,6 +263,19 @@ function makeHandles(){
   m2.on('drag',()=>{p2=m2.getLatLng();recompute(true)});
 }
 
+/* ---- Mittelkreis-Radius je Modus/Preset ---- */
+function centerRadiusFor(mode, preset){
+  if(mode==='grossfeld' || mode==='kleinfeld_im_grossfeld') return 9.15;
+  if(mode==='kleinfeld'){
+    switch(preset){
+      case '60x40': return 9.15; // 7er (Erw./D)
+      case '55x35': return 7.00; // 7er (E/F)
+      default: return 0;         // FUNiño/kleiner: kein Mittelkreis
+    }
+  }
+  return 0;
+}
+
 /* ---- Zeichnen ---- */
 function recompute(){
   if(!p1||!p2) return;
@@ -256,16 +286,28 @@ function recompute(){
   const len=Math.max(1,Math.round(parseFloat(lengthInput.value||"0")||0));
   const nx=-uy, ny=ux;
   const W=parseFloat(widthInput.value||"65");
+  const mode=modeSel.value;
 
+  // Außenrechteck aus Start+Richtung+Maßen
   const UR={x:P1.x,y:P1.y};                         // unten rechts (Start)
   const OR={x:P1.x+ux*len,y:P1.y+uy*len};           // oben rechts
   const OL={x:OR.x+nx*W,y:OR.y+ny*W};
   const UL={x:UR.x+nx*W,y:UR.y+ny*W};
 
   const out={points:[],lines:[]};
-  const mode=modeSel.value;
 
-  // --- Kleinfeld (separat) ---
+  // Helper zum Zeichnen von Mittelkreis (mit Toggle)
+  function drawCenter(an,label){
+    const r=centerRadiusFor(mode, kfPreset.value||"");
+    if(!showCenter.checked || r<=0) return;
+    addPoly(circle(an,r,96),label,out);
+    // Schnittpunkte Mittelkreis ↔ Mittellinie
+    const ml=mid(UL,OL), mr=mid(UR,OR);
+    const hits=circleLineIntersections(an,r,ml,mr);
+    hits.forEach((p,i)=>addPt(p,`${label} Schnittpunkt ${i===0?'(1)':'(2)'}`,out));
+  }
+
+  /* --- Kleinfeld separat --- */
   if(mode==='kleinfeld'){
     // Außen
     addLine(UL,UR,"(KF) Grundlinie unten",out);
@@ -277,31 +319,28 @@ function recompute(){
     addPt(OL,"(KF) Eckfahne oben links",out);
     addPt(OR,"(KF) Eckfahne oben rechts",out);
 
-    // Mitte
+    // Mitte & Mittellinie
     const mu=mid(UL,UR), mo=mid(OL,OR);
     const ml=mid(UL,OL), mr=mid(UR,OR);
     addLine(ml,mr,"(KF) Mittellinie",out);
     const an=mid(mu,mo); addPt(an,"(KF) Anstoßpunkt",out);
-    addPoly(circle(an,9.15,96),"(KF) Mittelkreis",out);
+    drawCenter(an,"(KF) Mittelkreis");
 
-    // Schnittpunkte (KF)
+    // Schnittpunkte Mittellinie ↔ Seitenlinien
     const spR=lineIntersection(UR,OR,ml,mr);
     const spL=lineIntersection(UL,OL,ml,mr);
     if(spR) addPt(spR,"(KF) Schnittpunkt Mittellinie & Seitenlinie rechts",out);
     if(spL) addPt(spL,"(KF) Schnittpunkt Mittellinie & Seitenlinie links",out);
-    const circleHits=circleLineIntersections(an,9.15,ml,mr);
-    circleHits.forEach((p,i)=>addPt(p,`(KF) Schnittpunkt Mittelkreis & Mittellinie ${i===0?'(1)':'(2)'}`,out));
 
-    // Tor-/Strafraum (KF)
-    const mitte_unten=mid(UL,UR), mitte_oben=mid(OL,OR);
+    // Tor-/Strafraum (oben/unten)
+    const mitte_unten=mu, mitte_oben=mo;
     drawKleinfeld(mitte_unten, ux, uy, nx, ny, "unten", out);
     drawKleinfeld(mitte_oben, -ux,-uy, nx, ny, "oben",  out);
 
-    lastResult=out;
-    return;
+    lastResult=out; return;
   }
 
-  // --- Großfeld (mit/ohne zusätzliches Kleinfeld) ---
+  /* --- Großfeld (mit/ohne zusätzliches Kleinfeld) --- */
   // Außen
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
@@ -312,20 +351,18 @@ function recompute(){
   addPt(OL,"Eckfahne oben links",out);
   addPt(OR,"Eckfahne oben rechts",out);
 
-  // Mitte
+  // Mitte & Mittellinie
   const mu=mid(UL,UR), mo=mid(OL,OR);
   const ml=mid(UL,OL), mr=mid(UR,OR);
   addLine(ml,mr,"Mittellinie",out);
   const an=mid(mu,mo); addPt(an,"Anstoßpunkt",out);
-  addPoly(circle(an,9.15,96),"Mittelkreis",out);
+  drawCenter(an,"Mittelkreis");
 
-  // Schnittpunkte (GF)
+  // Schnittpunkte (Mittellinie ↔ Seitenlinien)
   const spR=lineIntersection(UR,OR,ml,mr);
   const spL=lineIntersection(UL,OL,ml,mr);
   if(spR) addPt(spR,"Schnittpunkt Mittellinie & Seitenlinie rechts",out);
   if(spL) addPt(spL,"Schnittpunkt Mittellinie & Seitenlinie links",out);
-  const circleHits=circleLineIntersections(an,9.15,ml,mr);
-  circleHits.forEach((p,i)=>addPt(p,`Schnittpunkt Mittelkreis & Mittellinie ${i===0?'(1)':'(2)'}`,out));
 
   // Großfeld-Torbereiche
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
