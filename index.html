@@ -48,7 +48,7 @@
     <option value="g3v3_25x20">G-Jugend 3v3 – 25×20 m (Schusszonen, 4 Minitore)</option>
     <option value="f3v3_25x20">F-Jugend 3v3 – 25×20 m (Schusszonen, 4 Minitore)</option>
     <option value="g5v5_40x25">G-Jugend 5v5 – 40×25 m (wahlweise Minitore oder 5-m-Tore)</option>
-    <option value="e7v7_55x35">E-Jugend 7v7 – 55×35 m (Mittellinie, 5-m-Tore)</option>
+    <option value="e7v7_55x35">E-Jugend 7v7 – 55×35 m (Mittellinie, 5-m-Tore + Strafraum)</option>
   </select>
 
   <!-- Nur bei G 5v5 sichtbar -->
@@ -164,7 +164,7 @@ function lineIntersection(a1,a2,b1,b2){
   return {x:px,y:py};
 }
 
-/* ---- Großfeld-Geometrie für Hauptmodus (unverändert) ---- */
+/* ---- Großfeld (Hauptmodus) – unverändert, mit Mittelkreis etc. ---- */
 function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const torHalb=7.32/2;
   const tor_r={x:mitte.x+nx*torHalb,y:mitte.y+ny*torHalb};
@@ -173,7 +173,6 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(tor_r,`Torpfosten ${prefix} rechts`,out);
   addPt(tor_l,`Torpfosten ${prefix} links`,out);
   addLine(tor_r,tor_l,`Torlinie ${prefix}`,out);
-  // 5m / 16m wie gehabt …
   const f5r={x:tor_r.x+nx*5.5,y:tor_r.y+ny*5.5}, f5l={x:tor_l.x-nx*5.5,y:tor_l.y-ny*5.5};
   const e5r={x:f5r.x+ux*5.5,y:f5r.y+uy*5.5},     e5l={x:f5l.x+ux*5.5,y:f5l.y+uy*5.5};
   addLine(f5r,e5r,`5m Linie ${prefix} rechts`,out); addLine(f5l,e5l,`5m Linie ${prefix} links`,out); addLine(e5r,e5l,`5m Parallel ${prefix}`,out);
@@ -210,6 +209,47 @@ function drawKleinfeldGoalOnEnd(endLeft, endRight, namePrefix, out){
   addPt(pR,`${namePrefix} Torpfosten rechts (±2.5m)`,out);
   addPt(pL,`${namePrefix} Torpfosten links (±2.5m)`,out);
   addLine(pL,pR,`${namePrefix} Torlinie (5m)`,out);
+}
+
+/* ---- E-Jugend 7v7: Strafraum inkl. Linien ---- */
+function markE7v7End(endLeft, endRight, intoFieldDir, namePrefix, out){
+  // Richtung entlang der Torlinie
+  const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
+  const elen=Math.hypot(ex,ey)||1, vx=ex/elen, vy=ey/elen;
+
+  // Tor-Mittelpunkt + Pfosten (±2.5 m)
+  const mid={x:(endLeft.x+endRight.x)/2, y:(endLeft.y+endRight.y)/2};
+  addPt(mid,`${namePrefix} Tor-Mittelpunkt`,out);
+  const pR={x:mid.x+vx*2.5, y:mid.y+vy*2.5};
+  const pL={x:mid.x-vx*2.5, y:mid.y-vy*2.5};
+  addPt(pR,`${namePrefix} Torpfosten rechts (±2.5m)`,out);
+  addPt(pL,`${namePrefix} Torpfosten links (±2.5m)`,out);
+  addLine(pL,pR,`${namePrefix} Torlinie (5m)`,out);
+
+  // Fusspunkte Strafraum: von Pfosten je 12 m entlang der Torlinie "nach außen"
+  const fL={x:pL.x - vx*12, y:pL.y - vy*12}; // links weiter nach links
+  const fR={x:pR.x + vx*12, y:pR.y + vy*12}; // rechts weiter nach rechts
+  addPt(fL,`${namePrefix} Fusspunkt Strafraum links (+12m)`,out);
+  addPt(fR,`${namePrefix} Fusspunkt Strafraum rechts (+12m)`,out);
+
+  // Eckpunkte Strafraum: von Fusspunkten 12 m orthogonal ins Feld
+  const ix=intoFieldDir.x, iy=intoFieldDir.y; // normiert (ins Feld)
+  const cL={x:fL.x + ix*12, y:fL.y + iy*12};
+  const cR={x:fR.x + ix*12, y:fR.y + iy*12};
+  addPt(cL,`${namePrefix} Ecke Strafraum links (12m orth.)`,out);
+  addPt(cR,`${namePrefix} Ecke Strafraum rechts (12m orth.)`,out);
+
+  // Strafstoßpunkt: vom Tor-Mittelpunkt 8 m ins Feld
+  const sp={x:mid.x + ix*8, y:mid.y + iy*8};
+  addPt(sp,`${namePrefix} Strafstoßpunkt (8m)`,out);
+
+  // --- Strafraum-LINIEN ---
+  addLine(fL, cL, `${namePrefix} Strafraum Linie links (12m orth.)`, out);
+  addLine(fR, cR, `${namePrefix} Strafraum Linie rechts (12m orth.)`, out);
+  addLine(cL, cR, `${namePrefix} Strafraum Vorderkante`, out);
+
+  // Rückgabe für evtl. weitere Nutzung
+  return {mid,pL,pR,fL,fR,cL,cR,sp};
 }
 
 /* ---- Schusszonen: 6 m von jeder Torlinie ins Feld ---- */
@@ -268,7 +308,7 @@ function recompute(){
 
   const out={points:[],lines:[]};
 
-  /* --- Kleinfeld separat (nur deine Szenarien) --- */
+  /* --- Kleinfeld separat (Szenarien) --- */
   if(mode==='kleinfeld' && kfScenario.value){
     // Außen
     addLine(UL,UR,"(KF) Grundlinie unten",out);
@@ -282,7 +322,7 @@ function recompute(){
 
     const scenario=kfScenario.value;
 
-    // Mittellinie (wo gefordert) – immer mit Mittelpunkt-Marke
+    // Mittellinie (wo gefordert) – immer mit Mittelpunkt
     const ml=mid(UL,OL), mr=mid(UR,OR);
     const midlineCenter={x:(ml.x+mr.x)/2, y:(ml.y+mr.y)/2};
     const needMidline = (
@@ -295,16 +335,15 @@ function recompute(){
       addPt(midlineCenter,"(KF) Mittellinie Mittelpunkt",out);
     }
 
-    // G/F 3v3: Schusszonen (6 m), keine Mittellinie
+    // Schusszonen 6 m (wo gefordert)
     const needZones = (scenario==='g3v3_25x20' || scenario==='f3v3_25x20' ||
                       (scenario==='g5v5_40x25' && g5v5GoalType.value==='mini4'));
     if(needZones){
       drawSchusszonen(UL,UR,OL,OR, ux,uy, "(KF)", out);
     }
 
-    // Tore
+    // Tore / Markierungen je Szenario
     if(scenario==='g2v2_16x20' || scenario==='g3v3_25x20' || scenario==='f3v3_25x20'){
-      // 4 Mini-Tore an beiden Grundlinien
       drawMiniGoalsOnEnd(UL,UR,"(KF) unten",out);
       drawMiniGoalsOnEnd(OL,OR,"(KF) oben",out);
     } else if(scenario==='g5v5_40x25'){
@@ -312,20 +351,19 @@ function recompute(){
         drawMiniGoalsOnEnd(UL,UR,"(KF) unten",out);
         drawMiniGoalsOnEnd(OL,OR,"(KF) oben",out);
       }else{
-        // 2 Kleinfeldtore (5 m)
         drawKleinfeldGoalOnEnd(UL,UR,"(KF) unten",out);
         drawKleinfeldGoalOnEnd(OL,OR,"(KF) oben",out);
       }
     } else if(scenario==='e7v7_55x35'){
-      // 5-m-Tore (Mittelpunkt + ±2,5 m Pfosten + Torlinie)
-      drawKleinfeldGoalOnEnd(UL,UR,"(KF) unten",out);
-      drawKleinfeldGoalOnEnd(OL,OR,"(KF) oben",out);
+      // E-Jugend 7v7: Strafraum komplett inkl. Linien
+      markE7v7End(UL,UR,{x:ux,y:uy},"(KF) unten",out);   // ins Feld: +ux,+uy
+      markE7v7End(OL,OR,{x:-ux,y:-uy},"(KF) oben",out);  // ins Feld: -ux,-uy
     }
 
     lastResult=out; return;
   }
 
-  /* --- Großfeld (mit/ohne zusätzliches Kleinfeld) – unverändert --- */
+  /* --- Großfeld (ohne Detailänderungen) --- */
   // Außen
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
@@ -336,33 +374,24 @@ function recompute(){
   addPt(OL,"Eckfahne oben links",out);
   addPt(OR,"Eckfahne oben rechts",out);
 
-  // Mitte (inkl. Mittelpunkt)
+  // Mitte
   const mu=mid(UL,UR), mo=mid(OL,OR);
-  const ml=mid(UL,OL), mr=mid(UR,OR);
-  const midlineCenterGF={x:(ml.x+mr.x)/2, y:(ml.y+mr.y)/2};
-  addLine(ml,mr,"Mittellinie",out);
+  const mlGF=mid(UL,OL), mrGF=mid(UR,OR);
+  const midlineCenterGF={x:(mlGF.x+mrGF.x)/2, y:(mlGF.y+mrGF.y)/2};
+  addLine(mlGF,mrGF,"Mittellinie",out);
   addPt(midlineCenterGF,"Mittellinie Mittelpunkt",out);
-  // Mittelkreis beibehalten (9.15 m)
   const center=mid(mu,mo);
   addPoly(circle(center,9.15,96),"Mittelkreis",out);
 
   // Schnittpunkte Mittellinie ↔ Seitenlinien
-  const spR=lineIntersection(UR,OR,ml,mr);
-  const spL=lineIntersection(UL,OL,ml,mr);
+  const spR=lineIntersection(UR,OR,mlGF,mrGF);
+  const spL=lineIntersection(UL,OL,mlGF,mrGF);
   if(spR) addPt(spR,"Schnittpunkt Mittellinie & Seitenlinie rechts",out);
   if(spL) addPt(spL,"Schnittpunkt Mittellinie & Seitenlinie links",out);
 
   // Torbereiche (Großfeld)
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
   drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
-
-  // Optionales Kleinfeld im Großfeld (wie zuvor)
-  if(mode==='kleinfeld_im_grossfeld'){
-    const k_unten={x:mu.x+ux*16.5,y:mu.y+uy*16.5};
-    const k_oben ={x:mo.x-ux*16.5,y:mo.y-uy*16.5};
-    // einfache Version ohne Verlängerungs-Connects in dieser Datei (auf Wunsch wieder aktivierbar)
-    // Hier könntest du drawKleinfeldGoalOnEnd/drawMiniGoalsOnEnd nutzen, falls gewünscht.
-  }
 
   lastResult=out;
 }
