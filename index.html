@@ -41,16 +41,19 @@
     <option value="kleinfeld">Kleinfeld (separat)</option>
   </select>
 
-  <!-- Kleinfeld: die gewünschten Szenarien -->
+  <!-- Kleinfeld-Szenarien (inkl. F & E 5v5 in beiden Varianten) -->
   <select id="kfScenario" title="Kleinfeld-Szenario" disabled>
     <option value="">Szenario wählen…</option>
     <option value="g2v2_16x20">G-Jugend 2v2 – 16×20 m (Mittellinie, 4 Minitore)</option>
     <option value="g3v3_25x20">G-Jugend 3v3 – 25×20 m (Schusszonen, 4 Minitore)</option>
     <option value="f3v3_25x20">F-Jugend 3v3 – 25×20 m (Schusszonen, 4 Minitore)</option>
+
     <option value="f5v5_40x25_mini">F-Jugend 5v5 – 40×25 m (4 Minitore, 6m-Zonen)</option>
     <option value="f5v5_40x25_kf">F-Jugend 5v5 – 40×25 m (2 Kleinfeldtore, Mittellinie)</option>
+
     <option value="e5v5_40x25_mini">E-Jugend 5v5 – 40×25 m (4 Minitore, 6m-Zonen)</option>
     <option value="e5v5_40x25_kf">E-Jugend 5v5 – 40×25 m (2 Kleinfeldtore, Mittellinie)</option>
+
     <option value="e7v7_55x35">E-Jugend 7v7 – 55×35 m (Mittellinie, 5-m-Tore + Strafraum)</option>
   </select>
 
@@ -175,7 +178,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const elfer={x:mitte.x+ux*11,y:mitte.y+uy*11}; addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
 
-/* ---- Kleinfeld: Mini-Tore (2 m) an einer Grundlinie ---- */
+/* ---- Kleinfeld: Mini-Tore (2 m) an Grundlinie ---- */
 function drawMiniGoalsOnEnd(endLeft, endRight, namePrefix, out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const elen=Math.hypot(ex,ey)||1, vx=ex/elen, vy=ey/elen; // entlang Grundlinie
@@ -229,7 +232,6 @@ function markE7v7End(endLeft, endRight, intoFieldDir, namePrefix, out){
   addLine(fL, cL, `${namePrefix} Strafraum Linie links (12m orth.)`, out);
   addLine(fR, cR, `${namePrefix} Strafraum Linie rechts (12m orth.)`, out);
   addLine(cL, cR, `${namePrefix} Strafraum Vorderkante`, out);
-  return {mid,pL,pR,fL,fR,cL,cR,sp};
 }
 
 /* ---- Schusszonen: 6 m von jeder Torlinie ins Feld ---- */
@@ -280,9 +282,9 @@ function recompute(){
   const W=parseFloat(widthInput.value||"65");
   const mode=modeSel.value;
 
-  // Außenrechteck aus Start+Richtung+Maßen
-  const UR={x:P1.x,y:P1.y};                         // unten rechts (Start)
-  const OR={x:P1.x+ux*len,y:P1.y+uy*len};           // oben rechts
+  // Außenrechteck
+  const UR={x:P1.x,y:P1.y};
+  const OR={x:P1.x+ux*len,y:P1.y+uy*len};
   const OL={x:OR.x+nx*W,y:OR.y+ny*W};
   const UL={x:UR.x+nx*W,y:UR.y+ny*W};
 
@@ -300,46 +302,29 @@ function recompute(){
     addPt(OL,"(KF) Eckpunkt oben links",out);
     addPt(OR,"(KF) Eckpunkt oben rechts",out);
 
-    const scenario=kfScenario.value;
+    const s=kfScenario.value;
 
     // Mittellinie (wo gefordert) – immer mit Mittelpunkt
     const ml=mid(UL,OL), mr=mid(UR,OR);
-    const midlineCenter={x:(ml.x+mr.x)/2, y:(ml.y+mr.y)/2};
-    const needMidline = (
-      scenario==='g2v2_16x20' ||
-      scenario==='e5v5_40x25_kf' ||
-      scenario==='f5v5_40x25_kf' ||
-      scenario==='e7v7_55x35'
-    );
-    if(needMidline){
-      addLine(ml,mr,"(KF) Mittellinie",out);
-      addPt(midlineCenter,"(KF) Mittellinie Mittelpunkt",out);
-    }
+    const midCenter={x:(ml.x+mr.x)/2, y:(ml.y+mr.y)/2};
+    const needMid = (s==='g2v2_16x20' || s==='e5v5_40x25_kf' || s==='f5v5_40x25_kf' || s==='e7v7_55x35');
+    if(needMid){ addLine(ml,mr,"(KF) Mittellinie",out); addPt(midCenter,"(KF) Mittellinie Mittelpunkt",out); }
 
-    // Schusszonen 6 m (wo gefordert)
-    const needZones = (
-      scenario==='g3v3_25x20' || scenario==='f3v3_25x20' ||
-      scenario==='e5v5_40x25_mini' || scenario==='f5v5_40x25_mini'
-    );
-    if(needZones){
-      drawSchusszonen(UL,UR,OL,OR, ux,uy, "(KF)", out);
-    }
+    // Schusszonen (6 m), wo gefordert
+    const needZones = (s==='g3v3_25x20' || s==='f3v3_25x20' || s==='e5v5_40x25_mini' || s==='f5v5_40x25_mini');
+    if(needZones){ drawSchusszonen(UL,UR,OL,OR, ux,uy, "(KF)", out); }
 
-    // Tore / Markierungen je Szenario
-    if(
-      scenario==='g2v2_16x20' ||
-      scenario==='g3v3_25x20' || scenario==='f3v3_25x20' ||
-      scenario==='e5v5_40x25_mini' || scenario==='f5v5_40x25_mini'
-    ){
-      // 4 Minitore (je Grundlinie 2 Stück)
+    // Tore / Markierungen
+    if(s==='g2v2_16x20' || s==='g3v3_25x20' || s==='f3v3_25x20' || s==='e5v5_40x25_mini' || s==='f5v5_40x25_mini'){
+      // 4 Minitore
       drawMiniGoalsOnEnd(UL,UR,"(KF) unten",out);
       drawMiniGoalsOnEnd(OL,OR,"(KF) oben",out);
-    } else if(scenario==='e5v5_40x25_kf' || scenario==='f5v5_40x25_kf'){
-      // 2 Kleinfeldtore (5 m)
+    } else if(s==='e5v5_40x25_kf' || s==='f5v5_40x25_kf'){
+      // 2 Kleinfeldtore (5 m, Mittelpunkt ±2.5 m Pfosten)
       drawKleinfeldGoalOnEnd(UL,UR,"(KF) unten",out);
       drawKleinfeldGoalOnEnd(OL,OR,"(KF) oben",out);
-    } else if(scenario==='e7v7_55x35'){
-      // E-Jugend 7v7: Strafraum komplett inkl. Linien
+    } else if(s==='e7v7_55x35'){
+      // E 7v7: Strafraum inkl. Linien
       markE7v7End(UL,UR,{x:ux,y:uy},"(KF) unten",out);
       markE7v7End(OL,OR,{x:-ux,y:-uy},"(KF) oben",out);
     }
@@ -347,7 +332,7 @@ function recompute(){
     lastResult=out; return;
   }
 
-  /* --- Großfeld (ohne Detailänderungen) --- */
+  /* --- Großfeld (Standard) --- */
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
@@ -383,7 +368,7 @@ document.getElementById('reset').onclick=()=>{
 };
 document.getElementById('geojson').onclick=exportBothGeoJSON;
 
-/* ---- Export: Punkte & Linien getrennt, Dateiname frei wählbar ---- */
+/* ---- Export: Punkte & Linien getrennt ---- */
 function exportBothGeoJSON(){
   if(!lastResult){alert("Kein Feld erzeugt.");return;}
   const pt=(x,y)=>{const g=toLL(x,y);return[g.lon,g.lat]};
