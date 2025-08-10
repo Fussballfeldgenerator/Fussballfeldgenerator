@@ -116,7 +116,6 @@ const showCenter=document.getElementById('showCenter');
 modeSel.addEventListener('change',()=>{
   const isKF = modeSel.value==='kleinfeld';
   kfPreset.disabled = !isKF;
-  // Im Großfeld sind Länge/ Breite frei; im KF ohne Preset auch.
   if (!isKF) { lengthInput.disabled = false; }
   if (p1 && p2) recompute(true);
 });
@@ -195,8 +194,8 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
 
-/* ---- Kleinfeld (Tor 5,00 m) ---- */
-function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out){
+/* ---- Kleinfeld (Tor 5,00 m) mit optionalen Verlängerungen ---- */
+function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out, opts={extensions:false}){
   const off=2.5; // 5,00 m Torbreite
   const tor_r={x:mitte.x+nx*off,y:mitte.y+ny*off};
   const tor_l={x:mitte.x-nx*off,y:mitte.y-ny*off};
@@ -210,12 +209,16 @@ function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out){
   addPt(f12r,`12m Fusspunkt ${prefix} rechts`,out);
   addPt(f12l,`12m Fusspunkt ${prefix} links`,out);
 
-  const ef_r={x:f12r.x+nx*10,y:f12r.y+ny*10};
-  const ef_l={x:f12l.x-nx*10,y:f12l.y-ny*10};
-  addPt(ef_r,`Kleinfeld Eckfahne ${prefix} rechts`,out);
-  addPt(ef_l,`Kleinfeld Eckfahne ${prefix} links`,out);
-  addLine(f12r,ef_r,`Kleinfeld Torlinie Verlängerung ${prefix} rechts`,out);
-  addLine(f12l,ef_l,`Kleinfeld Torlinie Verlängerung ${prefix} links`,out);
+  // Verlängerungen NUR im Modus "+ Kleinfeld" (für Verbindungslinien)
+  let conn_r=null, conn_l=null;
+  if(opts.extensions){
+    conn_r={x:f12r.x+nx*10,y:f12r.y+ny*10};
+    conn_l={x:f12l.x-nx*10,y:f12l.y-ny*10};
+    addPt(conn_r,`Kleinfeld Verbindungspunkt ${prefix} rechts`,out);
+    addPt(conn_l,`Kleinfeld Verbindungspunkt ${prefix} links`,out);
+    addLine(f12r,conn_r,`Kleinfeld Torlinie Verlängerung ${prefix} rechts`,out);
+    addLine(f12l,conn_l,`Kleinfeld Torlinie Verlängerung ${prefix} links`,out);
+  }
 
   const e12r={x:f12r.x+ux*12,y:f12r.y+uy*12};
   const e12l={x:f12l.x+ux*12,y:f12l.y+uy*12};
@@ -228,7 +231,7 @@ function drawKleinfeld(mitte,ux,uy,nx,ny,prefix,out){
   const elfer={x:mitte.x+ux*9,y:mitte.y+uy*9};
   addPt(elfer,`Kleinfeld Elfmeterpunkt ${prefix}`,out);
 
-  return { ef_r, ef_l };
+  return { conn_r, conn_l };
 }
 
 /* ---- Klick-Logik: 2 Punkte = Start + Richtung ---- */
@@ -242,7 +245,7 @@ map.on('click',e=>{
     const P1=toUTM(p1.lat,p1.lng), P2=toUTM(p2.lat,p2.lng);
     const Lm=Math.hypot(P2.x-P1.x,P2.y-P1.y);
 
-    // Wenn Kleinfeld + Preset aktiv: Länge/Breite aus Preset, sonst gemessene Länge runden
+    // Kleinfeld + Preset aktiv: Länge/Breite aus Preset; sonst gemessene Länge
     if (modeSel.value==='kleinfeld' && kfPreset.value){
       const [L,W]=kfPreset.value.split('x').map(Number);
       lengthInput.value = String(L);
@@ -296,15 +299,23 @@ function recompute(){
 
   const out={points:[],lines:[]};
 
-  // Helper zum Zeichnen von Mittelkreis (mit Toggle)
-  function drawCenter(an,label){
+  // Helper: Mittellinie & Mittelkreis zeichnen (mit Toggle)
+  function drawCenter(an,label,UL,UR,OL,OR){
     const r=centerRadiusFor(mode, kfPreset.value||"");
-    if(!showCenter.checked || r<=0) return;
-    addPoly(circle(an,r,96),label,out);
-    // Schnittpunkte Mittelkreis ↔ Mittellinie
+    // Mittellinie
     const ml=mid(UL,OL), mr=mid(UR,OR);
-    const hits=circleLineIntersections(an,r,ml,mr);
-    hits.forEach((p,i)=>addPt(p,`${label} Schnittpunkt ${i===0?'(1)':'(2)'}`,out));
+    addLine(ml,mr,`${label?'':'(KF) '}Mittellinie`,out);
+    // Mittelkreis (optional)
+    if(showCenter.checked && r>0){
+      addPoly(circle(an,r,96),label||"(KF) Mittelkreis",out);
+      const hits=circleLineIntersections(an,r,ml,mr);
+      hits.forEach((p,i)=>addPt(p,`${label||'(KF) Mittelkreis'} Schnittpunkt ${i===0?'(1)':'(2)'}`,out));
+    }
+    // Schnittpunkte Mittellinie ↔ Seitenlinien
+    const spR=lineIntersection(UR,OR,ml,mr);
+    const spL=lineIntersection(UL,OL,ml,mr);
+    if(spR) addPt(spR,`${label?'':'(KF) '}Schnittpunkt Mittellinie & Seitenlinie rechts`,out);
+    if(spL) addPt(spL,`${label?'':'(KF) '}Schnittpunkt Mittellinie & Seitenlinie links`,out);
   }
 
   /* --- Kleinfeld separat --- */
@@ -319,23 +330,14 @@ function recompute(){
     addPt(OL,"(KF) Eckfahne oben links",out);
     addPt(OR,"(KF) Eckfahne oben rechts",out);
 
-    // Mitte & Mittellinie
+    // Mitte
     const mu=mid(UL,UR), mo=mid(OL,OR);
-    const ml=mid(UL,OL), mr=mid(UR,OR);
-    addLine(ml,mr,"(KF) Mittellinie",out);
     const an=mid(mu,mo); addPt(an,"(KF) Anstoßpunkt",out);
-    drawCenter(an,"(KF) Mittelkreis");
+    drawCenter(an,null,UL,UR,OL,OR);
 
-    // Schnittpunkte Mittellinie ↔ Seitenlinien
-    const spR=lineIntersection(UR,OR,ml,mr);
-    const spL=lineIntersection(UL,OL,ml,mr);
-    if(spR) addPt(spR,"(KF) Schnittpunkt Mittellinie & Seitenlinie rechts",out);
-    if(spL) addPt(spL,"(KF) Schnittpunkt Mittellinie & Seitenlinie links",out);
-
-    // Tor-/Strafraum (oben/unten)
-    const mitte_unten=mu, mitte_oben=mo;
-    drawKleinfeld(mitte_unten, ux, uy, nx, ny, "unten", out);
-    drawKleinfeld(mitte_oben, -ux,-uy, nx, ny, "oben",  out);
+    // Tor-/Strafraum (oben/unten) – ohne Verlängerungen!
+    drawKleinfeld(mu, ux, uy, nx, ny, "unten", out, {extensions:false});
+    drawKleinfeld(mo,-ux,-uy, nx, ny, "oben",  out, {extensions:false});
 
     lastResult=out; return;
   }
@@ -351,35 +353,23 @@ function recompute(){
   addPt(OL,"Eckfahne oben links",out);
   addPt(OR,"Eckfahne oben rechts",out);
 
-  // Mitte & Mittellinie
+  // Mitte
   const mu=mid(UL,UR), mo=mid(OL,OR);
-  const ml=mid(UL,OL), mr=mid(UR,OR);
-  addLine(ml,mr,"Mittellinie",out);
   const an=mid(mu,mo); addPt(an,"Anstoßpunkt",out);
-  drawCenter(an,"Mittelkreis");
-
-  // Schnittpunkte (Mittellinie ↔ Seitenlinien)
-  const spR=lineIntersection(UR,OR,ml,mr);
-  const spL=lineIntersection(UL,OL,ml,mr);
-  if(spR) addPt(spR,"Schnittpunkt Mittellinie & Seitenlinie rechts",out);
-  if(spL) addPt(spL,"Schnittpunkt Mittellinie & Seitenlinie links",out);
+  drawCenter(an,"Mittelkreis",UL,UR,OL,OR);
 
   // Großfeld-Torbereiche
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
   drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
 
-  // Zusätzliches Kleinfeld im Großfeld
+  // Zusätzliches Kleinfeld im Großfeld (mit Verlängerungen)
   if(mode==='kleinfeld_im_grossfeld'){
     const k_unten={x:mu.x+ux*16.5,y:mu.y+uy*16.5};
     const k_oben ={x:mo.x-ux*16.5,y:mo.y-uy*16.5};
-    const k1=drawKleinfeld(k_unten,ux,uy,nx,ny,"unten",out);
-    const k2=drawKleinfeld(k_oben,-ux,-uy,nx,ny,"oben",out);
-    addLine(k1.ef_r,k2.ef_r,"Kleinfeld Verbindung rechts",out);
-    addLine(k1.ef_l,k2.ef_l,"Kleinfeld Verbindung links",out);
-    const spKr=lineIntersection(k1.ef_r,k2.ef_r,ml,mr);
-    const spKl=lineIntersection(k1.ef_l,k2.ef_l,ml,mr);
-    if(spKr) addPt(spKr,"Schnittpunkt Kleinfeld-Verbindung & Mittellinie rechts",out);
-    if(spKl) addPt(spKl,"Schnittpunkt Kleinfeld-Verbindung & Mittellinie links",out);
+    const k1=drawKleinfeld(k_unten,ux,uy,nx,ny,"unten",out,{extensions:true});
+    const k2=drawKleinfeld(k_oben,-ux,-uy,nx,ny,"oben",out,{extensions:true});
+    if(k1.conn_r && k2.conn_r) addLine(k1.conn_r,k2.conn_r,"Kleinfeld Verbindung rechts",out);
+    if(k1.conn_l && k2.conn_l) addLine(k1.conn_l,k2.conn_l,"Kleinfeld Verbindung links",out);
   }
 
   lastResult=out;
