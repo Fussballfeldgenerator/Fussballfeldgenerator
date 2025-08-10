@@ -155,7 +155,7 @@ function lineIntersection(a1,a2,b1,b2){
   return {x:px,y:py};
 }
 
-/* ---- Großfeld: vollständige Markierungen ---- */
+/* ---- Großfeld: vollständige Markierungen + NEU: 5m-Eckpunkte ---- */
 function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const torHalb=7.32/2;
   const tor_r={x:mitte.x+nx*torHalb,y:mitte.y+ny*torHalb};
@@ -175,6 +175,9 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addLine(f5r,e5r,`5m Linie ${prefix} rechts`,out);
   addLine(f5l,e5l,`5m Linie ${prefix} links`,out);
   addLine(e5r,e5l,`5m Parallel ${prefix}`,out);
+  // NEU: Eckpunkte der 5m-Räume als Punkte
+  addPt(e5r,`5m Eckpunkt ${prefix} rechts`,out);
+  addPt(e5l,`5m Eckpunkt ${prefix} links`,out);
 
   // 16,5-m-Raum
   const f16r={x:tor_r.x+nx*16.5,y:tor_r.y+ny*16.5};
@@ -193,7 +196,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
 
-/* ---- Kleinfeld: Mini-Tore (2 m) an den Grundlinien ---- */
+/* ---- Kleinfeld: Mini-Tore / 5m-Kleinfeldtor (für Szenarien) ---- */
 function drawMiniGoalsOnEnd(endLeft, endRight, namePrefix, out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const elen=Math.hypot(ex,ey)||1, vx=ex/elen, vy=ey/elen;
@@ -206,8 +209,6 @@ function drawMiniGoalsOnEnd(endLeft, endRight, namePrefix, out){
   addPt(R_ref,`${namePrefix} Minitor-Pfosten (rechts, 2m)`,out);
   addLine(R_ref,R_other,`${namePrefix} Minitor (rechts, 2m)`,out);
 }
-
-/* ---- Kleinfeld: 5-m-Kleinfeldtor ---- */
 function drawKleinfeldGoalOnEnd(endLeft, endRight, namePrefix, out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const elen=Math.hypot(ex,ey)||1, vx=ex/elen, vy=ey/elen;
@@ -220,7 +221,7 @@ function drawKleinfeldGoalOnEnd(endLeft, endRight, namePrefix, out){
   addLine(pL,pR,`${namePrefix} Torlinie (5m)`,out);
 }
 
-/* ---- E 7v7: Strafraum inkl. Linien ---- */
+/* ---- E 7v7 Helfer (Szenarien) ---- */
 function markE7v7End(endLeft, endRight, intoFieldDir, namePrefix, out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const elen=Math.hypot(ex,ey)||1, vx=ex/elen, vy=ey/elen;
@@ -247,7 +248,7 @@ function markE7v7End(endLeft, endRight, intoFieldDir, namePrefix, out){
   addLine(cL, cR, `${namePrefix} Strafraum Vorderkante`, out);
 }
 
-/* ---- Kleinfeld: Schusszonen 6 m (liefert Segmente) ---- */
+/* ---- Kleinfeld: Schusszonen 6 m ---- */
 function drawSchusszonen(UL,UR,OL,OR, ux,uy, namePrefix, out){
   const bottomA={x:UL.x+ux*6, y:UL.y+uy*6};
   const bottomB={x:UR.x+ux*6, y:UR.y+uy*6};
@@ -274,7 +275,7 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addPt(mB,"(vGF) Tor-Mittelpunkt unten",out);
   addPt(mT,"(vGF) Tor-Mittelpunkt oben",out);
 
-  // Pfosten (5 m Tor): ±2,5 m entlang Torlinie (nx,ny)
+  // Pfosten (5 m): ±2,5 m entlang Torlinie
   const pBR={x:mB.x+nx*2.5, y:mB.y+ny*2.5};
   const pBL={x:mB.x-nx*2.5, y:mB.y-ny*2.5};
   const pTR={x:mT.x+nx*2.5, y:mT.y+ny*2.5};
@@ -286,7 +287,7 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addLine(pBL,pBR,"(vGF) Torlinie unten (5 m)",out);
   addLine(pTL,pTR,"(vGF) Torlinie oben (5 m)",out);
 
-  // Strafraum-Fußpunkte: ±14,5 m (2,5 + 12) auf der Torlinie
+  // Strafraum-Fußpunkte (±14,5 m) auf der Torlinie
   const sFB_R={x:mB.x+nx*14.5, y:mB.y+ny*14.5};
   const sFB_L={x:mB.x-nx*14.5, y:mB.y-ny*14.5};
   const sFT_R={x:mT.x+nx*14.5, y:mT.y+ny*14.5};
@@ -296,7 +297,7 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addPt(sFT_R,"(vGF) Strafraum-Fusspunkt oben rechts (±14,5 m)",out);
   addPt(sFT_L,"(vGF) Strafraum-Fusspunkt oben links (±14,5 m)",out);
 
-  // Von den Fußpunkten 12 m orthogonal (parallel zur Seitenlinie = entlang ux,uy)
+  // Von den Fußpunkten 12 m orthogonal (parallel Seitenlinie)
   const cB_R={x:sFB_R.x+ux*12, y:sFB_R.y+uy*12};
   const cB_L={x:sFB_L.x+ux*12, y:sFB_L.y+uy*12};
   const cT_R={x:sFT_R.x-ux*12, y:sFT_R.y-uy*12};
@@ -305,36 +306,51 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addLine(sFB_L,cB_L,"(vGF) Strafraumgrenze unten links (12 m)",out);
   addLine(sFT_R,cT_R,"(vGF) Strafraumgrenze oben rechts (12 m)",out);
   addLine(sFT_L,cT_L,"(vGF) Strafraumgrenze oben links (12 m)",out);
+  // NEU: Eckpunkte des Strafraums als Punkte
+  addPt(cB_R,"(vGF) Strafraum-Ecke unten rechts",out);
+  addPt(cB_L,"(vGF) Strafraum-Ecke unten links",out);
+  addPt(cT_R,"(vGF) Strafraum-Ecke oben rechts",out);
+  addPt(cT_L,"(vGF) Strafraum-Ecke oben links",out);
 
-  // Frontlinie des Strafraums (parallel zur Torlinie)
+  // Frontlinie (parallel zur Torlinie)
   addLine(cB_L,cB_R,"(vGF) Strafraum-Front unten",out);
   addLine(cT_L,cT_R,"(vGF) Strafraum-Front oben",out);
 
-  // Seitenlinien-Position: ±24,5 m (14,5 + 10) auf der Torlinie
+  // Seitenlinien-Position: ±24,5 m (Spielfeldbreite 49 m)
   const sB_R={x:mB.x+nx*24.5, y:mB.y+ny*24.5};
   const sB_L={x:mB.x-nx*24.5, y:mB.y-ny*24.5};
   const sT_R={x:mT.x+nx*24.5, y:mT.y+ny*24.5};
   const sT_L={x:mT.x-nx*24.5, y:mT.y-ny*24.5};
 
-  // Seitenlinien (senkrecht zur Torlinie: entlang ux,uy), verbinden unten↔oben
+  // Seitenlinien (senkrecht zur Torlinie)
   addLine(sB_L,sT_L,"(vGF) Seitenlinie links",out);
   addLine(sB_R,sT_R,"(vGF) Seitenlinie rechts",out);
 
-  // Mittellinie (mittig zwischen Torlinien, parallel zur Torlinie), Anstoßpunkt
+  // NEU: Spielfeld-Eckpunkte (vier Ecken des 49-m-Feldes)
+  addPt(sB_L,"(vGF) Spielfeldecke unten links",out);
+  addPt(sB_R,"(vGF) Spielfeldecke unten rechts",out);
+  addPt(sT_L,"(vGF) Spielfeldecke oben links",out);
+  addPt(sT_R,"(vGF) Spielfeldecke oben rechts",out);
+
+  // Mittellinie (mittig zwischen Torlinien), Anstoßpunkt
   const midLeft ={x:(sB_L.x+sT_L.x)/2, y:(sB_L.y+sT_L.y)/2};
   const midRight={x:(sB_R.x+sT_R.x)/2, y:(sB_R.y+sT_R.y)/2};
   addLine(midLeft,midRight,"(vGF) Mittellinie",out);
   const kickoff={x:(midLeft.x+midRight.x)/2, y:(midLeft.y+midRight.y)/2};
   addPt(kickoff,"(vGF) Anstoßpunkt",out);
 
-  // Strafstoßpunkte 9 m von der Torlinie ins Feld (entlang ux,uy)
+  // NEU: Seitenlinien-Mittelpunkte als Punkte
+  addPt(midLeft,"(vGF) Seitenlinien-Mittelpunkt links",out);
+  addPt(midRight,"(vGF) Seitenlinien-Mittelpunkt rechts",out);
+
+  // Strafstoßpunkte 9 m von der Torlinie ins Feld
   const penB={x:mB.x+ux*9, y:mB.y+uy*9};
   const penT={x:mT.x-ux*9, y:mT.y-uy*9};
   addPt(penB,"(vGF) Strafstoßpunkt unten (9 m)",out);
   addPt(penT,"(vGF) Strafstoßpunkt oben  (9 m)",out);
 }
 
-/* ---- Kleinfeld (separat) mit Schnittpunkt-Punkten ---- */
+/* ---- Kleinfeld (separat) – Szenarien mit Schnittpunkt-Punkten ---- */
 function applyScenarioDimensions(){
   const v=kfScenario.value;
   let L=null,W=null;
@@ -359,7 +375,7 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
   const sideRight={A:UR,B:OR};
   const sideLeft ={A:UL,B:OL};
 
-  // Mittellinie (wo gefordert) + Mittelpunkt + Schnittpunkte mit Seitenlinien
+  // Mittellinie + Schnittpunkte (falls gefordert)
   const ml=mid(UL,OL), mr=mid(UR,OR);
   const midCenter={x:(ml.x+mr.x)/2, y:(ml.y+mr.y)/2};
   const needMid = (s==='g2v2_16x20' || s==='e5v5_40x25_kf' || s==='f5v5_40x25_kf' || s==='e7v7_55x35');
@@ -394,7 +410,6 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
     drawKleinfeldGoalOnEnd(UL,UR,"(KF) unten",out);
     drawKleinfeldGoalOnEnd(OL,OR,"(KF) oben",out);
   } else if(s==='e7v7_55x35'){
-    // E 7v7: inkl. Strafraum
     const intoB={x:ux,y:uy}, intoT={x:-ux,y:-uy};
     markE7v7End(UL,UR,intoB,"(KF) unten",out);
     markE7v7End(OL,OR,intoT,"(KF) oben",out);
@@ -434,26 +449,23 @@ function recompute(){
   const W=parseFloat(widthInput.value||"65");
   const mode=modeSel.value;
 
-  // Außenrechteck auf Basis der Seitenlinie
-  const UR={x:P1.x,y:P1.y};                         // unten rechts (Start)
-  const OR={x:P1.x+ux*len,y:P1.y+uy*len};           // oben rechts
+  // Außenrechteck des Großfelds
+  const UR={x:P1.x,y:P1.y};
+  const OR={x:P1.x+ux*len,y:P1.y+uy*len};
   const OL={x:OR.x+nx*W,y:OR.y+ny*W};
   const UL={x:UR.x+nx*W,y:UR.y+ny*W};
 
   const out={points:[],lines:[]};
 
-  /* --- Kleinfeld separat? Dann ausschließlich dieses zeichnen --- */
+  /* --- Kleinfeld separat? --- */
   if(mode==='kleinfeld' && kfScenario.value){
-    // Dimensionen aus Preset übernehmen
     const L0 = parseFloat(lengthInput.value), W0 = parseFloat(widthInput.value);
     if(!Number.isFinite(L0) || !Number.isFinite(W0)) applyScenarioDimensions();
-
-    // Außen (UL..OR) ist bereits passend; zeichnen und Szenario-Details
     drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out);
     lastResult=out; return;
   }
 
-  /* --- Großfeld (immer zeichnen in den Großfeld-Modi) --- */
+  /* --- Großfeld (immer zeichnen) --- */
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
