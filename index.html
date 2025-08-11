@@ -57,7 +57,7 @@
   </select>
   <span id="kfInfo" class="scenario-note" style="display:none;"></span>
 
-  <!-- Großfeld: freie Eingabe (wird bei Kleinfeld deaktiviert) -->
+  <!-- Großfeld: freie Eingabe (bei Kleinfeld deaktiviert) -->
   <label>L (m):
     <input id="length" type="number" step="1" min="90" max="120" placeholder="90–120" value="105">
   </label>
@@ -81,31 +81,81 @@ proj4.defs("EPSG:25832","+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs +type
 const toUTM=(lat,lon)=>{const r=proj4("WGS84","EPSG:25832",[lon,lat]);return{x:r[0],y:r[1]}};
 const toLL =(x,y)=>{const r=proj4("EPSG:25832","WGS84",[x,y]);return{lat:r[1],lon:r[0]}};
 
-/* ---- Karte ---- */
-const map=L.map('map').setView([48.1372,11.5756],18);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,attribution:'© OpenStreetMap-Mitwirkende'}).addTo(map);
+/* ---- Karte mit optimiertem Zoom/Blending ---- */
+const map = L.map('map', { zoomControl:true }).setView([48.1372,11.5756], 18);
+map.setMaxZoom(22); // Overscale bis 22
+
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxNativeZoom:19,
+  maxZoom:22,
+  updateWhenZooming:true,
+  updateInterval:50,
+  attribution:'© OpenStreetMap-Mitwirkende'
+}).addTo(map);
 
 let dop=null;
 document.getElementById('wms').onclick=()=>{
   const btn=document.getElementById('wms');
-  if(dop){map.removeLayer(dop);dop=null;btn.textContent="Orthofoto";return;}
+  if(dop){
+    map.removeLayer(dop); dop=null;
+    osm.setOpacity(1);
+    btn.textContent="Orthofoto";
+    return;
+  }
   dop=L.tileLayer.wms('https://geoservices.bayern.de/od/wms/dop/v1/dop20?',{
-    layers:'by_dop20c',version:'1.1.1',format:'image/png',transparent:true,uppercase:true,tileSize:256,
+    layers:'by_dop20c',
+    version:'1.1.1',
+    format:'image/jpeg',
+    transparent:false,
+    tileSize:512,
+    detectRetina:true,
+    maxZoom:22,
+    updateWhenZooming:true,
+    updateInterval:50,
+    keepBuffer:6,
+    opacity:0.9,
     attribution:'© LDBV DOP20 (WMS) CC BY 4.0'
   }).addTo(map);
-  let err=0; dop.on('tileerror',()=>{ if(++err===3){ map.removeLayer(dop); dop=null; alert('Orthofoto WMS nicht erreichbar/Zoom zu hoch – bleibe bei OSM.'); btn.textContent="Orthofoto"; }});
+
+  const adjustBlend=()=>{
+    if(!dop) return;
+    const z=map.getZoom();
+    if(z>=19){ osm.setOpacity(0.2); dop.setOpacity(1.0); dop.bringToFront(); }
+    else     { osm.setOpacity(1.0); dop.setOpacity(0.6); }
+  };
+  adjustBlend();
+  map.on('zoomend',adjustBlend);
+
+  let err=0; dop.on('tileerror',()=>{ if(++err===3){ map.removeLayer(dop); dop=null; osm.setOpacity(1); alert('Orthofoto WMS nicht erreichbar/Zoom zu hoch – bleibe bei OSM.'); btn.textContent="Orthofoto"; }});
   btn.textContent="Orthofoto aus";
 };
 
-/* ---- Standort ---- */
+/* ---- Exakter Standort: Punkt + Accuracy-Ring, watchPosition ---- */
+let posDot=null,posRing=null;
 document.getElementById('loc').onclick=()=>{
   if(!navigator.geolocation){alert('Geolocation nicht verfügbar');return;}
-  navigator.geolocation.getCurrentPosition(pos=>{
+  const zoomForAcc=a=> a<5?21: a<10?20: a<20?19:18;
+
+  if(posDot){draw.removeLayer(posDot); posDot=null;}
+  if(posRing){draw.removeLayer(posRing); posRing=null;}
+
+  navigator.geolocation.watchPosition(pos=>{
     const {latitude,longitude,accuracy}=pos.coords;
-    const z=accuracy<10?20:accuracy<25?19:18;
-    map.setView([latitude,longitude],z);
-    L.circle([latitude,longitude],{radius:accuracy}).addTo(draw);
-  },()=>alert('Standort nicht möglich. Bitte HTTPS + Erlaubnis prüfen.'),{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+    const ll=[latitude,longitude];
+
+    if(!posDot){
+      posDot=L.circleMarker(ll,{radius:5,color:'#2563eb',fillColor:'#3b82f6',fillOpacity:1,weight:1})
+        .addTo(draw).bindTooltip(`GPS: ±${Math.round(accuracy)} m`);
+      posRing=L.circle(ll,{radius:Math.max(accuracy,3),color:'#2563eb',weight:1,opacity:.6,fillColor:'#3b82f6',fillOpacity:.05,dashArray:'4,4'})
+        .addTo(draw);
+      map.setView(ll, zoomForAcc(accuracy));
+    }else{
+      posDot.setLatLng(ll);
+      posDot.setTooltipContent(`GPS: ±${Math.round(accuracy)} m`);
+      posRing.setLatLng(ll);
+      posRing.setRadius(Math.max(accuracy,3));
+    }
+  },()=>alert('Standort nicht möglich. Bitte HTTPS + Erlaubnis prüfen.'),{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 };
 
 /* ---- Zeichenlayer ---- */
@@ -123,7 +173,7 @@ const presetNote=document.getElementById('presetNote');
 const kfInfo=document.getElementById('kfInfo');
 const fnameInput=document.getElementById('fname');
 
-/* ---- Kleinfeld-Szenario-Maße + Info ---- */
+/* ---- Kleinfeld-Szenario-Maße ---- */
 const scenarioDims={
   g2v2_16x20:{L:16, W:20, info:"Mittellinie, 4 Minitore"},
   g3v3_25x20:{L:25, W:20, info:"6m-Schusszonen, 4 Minitore"},
@@ -134,47 +184,35 @@ const scenarioDims={
   e5v5_40x25_kf:{L:40, W:25, info:"2 Kleinfeldtore, Mittellinie"},
   e7v7_55x35:{L:55, W:35, info:"Mittellinie, 5-m-Tore + Strafraum"}
 };
-function getScenarioDims(){ return scenarioDims[kfScenario.value]||null; }
+const getScenarioDims=()=>scenarioDims[kfScenario.value]||null;
+
+/* ---- Validierungen & UI-Sperren ---- */
+function validateGrossfeldInputs(){
+  if(modeSel.value==='kleinfeld') return;
+  let L=parseFloat(lengthInput.value), W=parseFloat(widthInput.value);
+  if(!Number.isFinite(L)) L=105; if(!Number.isFinite(W)) W=65;
+  L=Math.min(120,Math.max(90,Math.round(L)));
+  W=Math.min(90,Math.max(45,Math.round(W*10)/10));
+  lengthInput.value=String(L); widthInput.value=String(W);
+}
 function updateScenarioInfo(){
   if(modeSel.value!=='kleinfeld'){ kfInfo.style.display='none'; return; }
   const d=getScenarioDims();
-  if(d){
-    kfInfo.textContent=`(L=${d.L} m, B=${d.W} m — ${d.info})`;
-    kfInfo.style.display='inline';
-    lengthInput.value=d.L; widthInput.value=d.W;
-  }else{
-    kfInfo.textContent=''; kfInfo.style.display='none';
-  }
+  if(d){ kfInfo.textContent=`(L=${d.L} m, B=${d.W} m — ${d.info})`; kfInfo.style.display='inline'; lengthInput.value=d.L; widthInput.value=d.W; }
+  else{ kfInfo.textContent=''; kfInfo.style.display='none'; }
 }
-
-/* ---- Validierung Großfeld (nur in Großfeld-Modi) ---- */
-function validateGrossfeldInputs(){
-  if(modeSel.value==='kleinfeld') return;
-  let L = parseFloat(lengthInput.value);
-  let W = parseFloat(widthInput.value);
-  if (!Number.isFinite(L)) L = 105;
-  if (!Number.isFinite(W)) W = 65;
-  if (L < 90) L = 90;
-  if (L > 120) L = 120;
-  if (W < 45) W = 45;
-  if (W > 90)  W = 90;
-  lengthInput.value = String(Math.round(L));
-  widthInput.value  = String(Math.round(W*10)/10);
-}
-
-/* ---- Modus-Umschaltung (L/B sperren bei Kleinfeld) ---- */
 function updateInputLocking(){
-  const isKF = modeSel.value==='kleinfeld';
-  kfScenario.disabled = !isKF;
-  lengthInput.disabled = isKF;
-  widthInput.disabled  = isKF;
-  presetNote.style.display = isKF ? 'inline' : 'none';
+  const isKF=(modeSel.value==='kleinfeld');
+  kfScenario.disabled=!isKF;
+  lengthInput.disabled=isKF;
+  widthInput.disabled=isKF;
+  presetNote.style.display=isKF?'inline':'none';
   updateScenarioInfo();
 }
 modeSel.addEventListener('change',()=>{ updateInputLocking(); if(p1&&p2) recompute(); });
 kfScenario.addEventListener('change',()=>{ updateScenarioInfo(); if(p1&&p2) recompute(); });
 
-/* ---- Helpers ---- */
+/* ---- Geometrie-Helpers ---- */
 const norm=(dx,dy)=>{const L=Math.hypot(dx,dy)||1;return{ux:dx/L,uy:dy/L,L}};
 const mid =(A,B)=>({x:(A.x+B.x)/2,y:(A.y+B.y)/2});
 const toLLArr=ps=>ps.map(p=>{const g=toLL(p.x,p.y);return[g.lat,g.lon]});
@@ -190,7 +228,7 @@ function lineIntersection(a1,a2,b1,b2){
   return {x:px,y:py};
 }
 
-/* ---- Großfeld: Markierungen (inkl. 5m-Ecken als Punkte) ---- */
+/* ---- Großfeld: Torbereiche (5m-Ecken, 16,5m-Ecken, Elfer) ---- */
 function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const torHalb=7.32/2;
   const tor_r={x:mitte.x+nx*torHalb,y:mitte.y+ny*torHalb};
@@ -200,7 +238,6 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(tor_l,`Torpfosten ${prefix} links`,out);
   addLine(tor_r,tor_l,`Torlinie ${prefix}`,out);
 
-  // 5-m-Raum
   const f5r={x:tor_r.x+nx*5.5,y:tor_r.y+ny*5.5};
   const f5l={x:tor_l.x-nx*5.5,y:tor_l.y-ny*5.5};
   addPt(f5r,`5m Fusspunkt ${prefix} rechts`,out);
@@ -213,7 +250,6 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(e5r,`5m Eckpunkt ${prefix} rechts`,out);
   addPt(e5l,`5m Eckpunkt ${prefix} links`,out);
 
-  // 16,5-m-Raum
   const f16r={x:tor_r.x+nx*16.5,y:tor_r.y+ny*16.5};
   const f16l={x:tor_l.x-nx*16.5,y:tor_l.y-ny*16.5};
   addPt(f16r,`16,5m Fusspunkt ${prefix} rechts`,out);
@@ -230,7 +266,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
 
-/* ---- Kleinfeld: Helfer (Szenarien) ---- */
+/* ---- Kleinfeld: Tore ---- */
 function drawMiniGoalsOnEnd(endLeft, endRight, namePrefix, out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const elen=Math.hypot(ex,ey)||1, vx=ex/elen, vy=ey/elen;
@@ -295,7 +331,6 @@ function drawSchusszonen(UL,UR,OL,OR, ux,uy, namePrefix, out){
 
 /* ---- Verkleinertes Großfeld ---- */
 function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
-  // Torlinien auf Höhe 16,5 m
   const bL={x:UL.x+ux*16.5, y:UL.y+uy*16.5};
   const bR={x:UR.x+ux*16.5, y:UR.y+uy*16.5};
   const tL={x:OL.x-ux*16.5, y:OL.y-uy*16.5};
@@ -319,7 +354,6 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addLine(pBL,pBR,"(vGF) Torlinie unten (5 m)",out);
   addLine(pTL,pTR,"(vGF) Torlinie oben (5 m)",out);
 
-  // Strafraum Fußpunkte ±14,5 m
   const sFB_R={x:mB.x+nx*14.5, y:mB.y+ny*14.5};
   const sFB_L={x:mB.x-nx*14.5, y:mB.y-ny*14.5};
   const sFT_R={x:mT.x+nx*14.5, y:mT.y+ny*14.5};
@@ -329,7 +363,6 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addPt(sFT_R,"(vGF) Strafraum-Fusspunkt oben rechts",out);
   addPt(sFT_L,"(vGF) Strafraum-Fusspunkt oben links",out);
 
-  // 12 m orthogonal vom Fußpunkt (parallel Seitenlinie)
   const cB_R={x:sFB_R.x+ux*12, y:sFB_R.y+uy*12};
   const cB_L={x:sFB_L.x+ux*12, y:sFB_L.y+uy*12};
   const cT_R={x:sFT_R.x-ux*12, y:sFT_R.y-uy*12};
@@ -346,7 +379,6 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addLine(cB_L,cB_R,"(vGF) Strafraum-Front unten",out);
   addLine(cT_L,cT_R,"(vGF) Strafraum-Front oben",out);
 
-  // Seitenlinienposition ±24,5 m (Gesamtbreite 49 m)
   const sB_R={x:mB.x+nx*24.5, y:mB.y+ny*24.5};
   const sB_L={x:mB.x-nx*24.5, y:mB.y-ny*24.5};
   const sT_R={x:mT.x+nx*24.5, y:mT.y+ny*24.5};
@@ -354,22 +386,20 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addLine(sB_L,sT_L,"(vGF) Seitenlinie links",out);
   addLine(sB_R,sT_R,"(vGF) Seitenlinie rechts",out);
 
-  // Spielfeld-Ecken + Seitenlinien-Mittelpunkte
   addPt(sB_L,"(vGF) Spielfeldecke unten links",out);
   addPt(sB_R,"(vGF) Spielfeldecke unten rechts",out);
   addPt(sT_L,"(vGF) Spielfeldecke oben links",out);
   addPt(sT_R,"(vGF) Spielfeldecke oben rechts",out);
+
   const midLeft ={x:(sB_L.x+sT_L.x)/2, y:(sB_L.y+sT_L.y)/2};
   const midRight={x:(sB_R.x+sT_R.x)/2, y:(sB_R.y+sT_R.y)/2};
-  addPt(midLeft,"(vGF) Seitenlinien-Mittelpunkt links",out);
-  addPt(midRight,"(vGF) Seitenlinien-Mittelpunkt rechts",out);
-
-  // Mittellinie + Anstoßpunkt
   addLine(midLeft,midRight,"(vGF) Mittellinie",out);
   const kickoff={x:(midLeft.x+midRight.x)/2, y:(midLeft.y+midRight.y)/2};
   addPt(kickoff,"(vGF) Anstoßpunkt",out);
 
-  // Strafstoßpunkte 9 m
+  addPt(midLeft,"(vGF) Seitenlinien-Mittelpunkt links",out);
+  addPt(midRight,"(vGF) Seitenlinien-Mittelpunkt rechts",out);
+
   const penB={x:mB.x+ux*9, y:mB.y+uy*9};
   const penT={x:mT.x-ux*9, y:mT.y-uy*9};
   addPt(penB,"(vGF) Strafstoßpunkt unten (9 m)",out);
@@ -400,7 +430,7 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
     addLine(ml,mr,"(KF) Mittellinie",out);
     addPt(midCenter,"(KF) Mittellinie Mittelpunkt",out);
     const spR=lineIntersection(sideRight.A,sideRight.B,ml,mr);
-    const spL=lineIntersection(sideLeft.A, sideLeft.B, ml,mr);
+    const spL=lineIntersection(sideLeft.A,sideLeft.B,ml,mr);
     if(spR) addPt(spR,"(KF) Schnittpunkt Mittellinie & Seitenlinie rechts",out);
     if(spL) addPt(spL,"(KF) Schnittpunkt Mittellinie & Seitenlinie links",out);
   }
@@ -437,11 +467,7 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
 map.on('click',e=>{
   if(handles.getLayers().length===2) return;
   clicks.addLayer(L.circleMarker(e.latlng,{radius:5}));
-  if(!p1){ p1=e.latlng; }
-  else{
-    p2=e.latlng; makeHandles();
-    recompute();
-  }
+  if(!p1){ p1=e.latlng; } else { p2=e.latlng; makeHandles(); recompute(); }
 });
 function makeHandles(){
   handles.clearLayers();
@@ -466,7 +492,7 @@ function recompute(){
   if(mode==='kleinfeld'){
     const d=getScenarioDims();
     if(!d){ alert('Bitte zuerst ein Kleinfeld-Szenario wählen.'); return; }
-    len=d.L; W=d.W; // **fix aus Szenario**
+    len=d.L; W=d.W; // fix aus Szenario
   } else {
     validateGrossfeldInputs();
     len=Math.round(parseFloat(lengthInput.value||"105"));
@@ -474,8 +500,8 @@ function recompute(){
   }
 
   // Außenrechteck basierend auf len/W & Richtung (rechte Längsseite)
-  const UR={x:P1.x,y:P1.y};                  // unten rechts (Start)
-  const OR={x:P1.x+ux*len,y:P1.y+uy*len};    // oben rechts
+  const UR={x:P1.x,y:P1.y};
+  const OR={x:P1.x+ux*len,y:P1.y+uy*len};
   const OL={x:OR.x+nx*W,y:OR.y+ny*W};
   const UL={x:UR.x+nx*W,y:UR.y+ny*W};
 
@@ -486,7 +512,7 @@ function recompute(){
     lastResult=out; return;
   }
 
-  // Großfeld
+  // Großfeld – Außenlinien
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
@@ -523,11 +549,11 @@ function recompute(){
 document.getElementById('reset').onclick=()=>{
   draw.clearLayers();handles.clearLayers();clicks.clearLayers();
   p1=p2=null;lastResult=null;
-  if(!lengthInput.disabled){ // nur zurücksetzen, wenn im GF-Modus
+  if(!lengthInput.disabled){
     if(!lengthInput.value) lengthInput.value="105";
     if(!widthInput.value)  widthInput.value="65";
   } else {
-    updateScenarioInfo(); // Kleinfeld: Anzeige der fixen Maße beibehalten
+    updateScenarioInfo();
   }
 };
 document.getElementById('geojson').onclick=exportBothGeoJSON;
