@@ -5,10 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Franks Fußballfeld-Generator</title>
 
-<!-- OpenLayers & proj4 (EPSG:25832) -->
+<!-- OpenLayers & proj4 -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+
+<!-- GeoPackage (clientseitig) -->
+<script src="https://unpkg.com/geopackage@3.4.0/dist/geopackage.min.js"></script>
 
 <style>
   html,body,#map{height:100%;margin:0}
@@ -79,10 +82,12 @@
 
   <label>Dateiname:
     <input id="fname" type="text" value="Dateiname">
-    <span class="muted">→ zwei GeoJSON</span>
+    <span class="muted">.gpkg / .geojson</span>
   </label>
+
   <button id="reset">Neu</button>
-  <button id="exportGeoJSON">Export</button>
+  <button id="exportGPKG">Export GPKG</button>
+  <button id="exportGeoJSON">Export GeoJSON</button>
 </div>
 
 <div class="hint">Zwei Punkte der rechten Längsseite: 1 = Start (unten rechts), 2 = Richtung (oben rechts).</div>
@@ -221,8 +226,8 @@ function updateDockAvailability(){
   dockWarn.style.display='none';
   if(!isV) return;
   const L = Number(lengthInput.value)||105;
-  const std = L - 33;     // 16.5 + 16.5
-  const dc  = L - 16.5;   // Andocken an eine Torlinie
+  const std = L - 33;
+  const dc  = L - 16.5;
   dockLen.textContent=`vGF Länge: Standard ${Math.round(std)} m | Andocken ${dc.toFixed(1)} m`;
   if(L<103){
     dockWarn.style.display='inline';
@@ -267,7 +272,7 @@ document.getElementById('reset').onclick=()=>{
   p1=p2=null;
   vectorSource.clear();
   clickOverlaySrc.clear();
-  gpsPointFeature=null; gpsCircleFeature=null; // GPS-Overlays beim nächsten Klick neu
+  gpsPointFeature=null; gpsCircleFeature=null;
   lastResult=null;
 };
 
@@ -339,7 +344,6 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const elfer={x:mitte.x+ux*11,y:mitte.y+uy*11};
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
-
 function drawMiniGoalsOnEnd(endLeft, endRight, namePrefix, out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const el=Math.hypot(ex,ey)||1, vx=ex/el, vy=ey/el;
@@ -528,7 +532,6 @@ let lastResult=null;
 
 function redraw(){
   if(!p1||!p2) return;
-  // nur eigene Features löschen (GPS/Ringe bleiben bis Reset)
   vectorSource.getFeatures().forEach(f=>{
     const n=f.get('name'); if(n) vectorSource.removeFeature(f);
   });
@@ -549,7 +552,6 @@ function redraw(){
     len=Lval; W=Wval;
   }
 
-  // Außenrechteck aus rechter Längsseite
   const UR={x:P1.x,y:P1.y};
   const OR={x:P1.x+ux*len,y:P1.y+uy*len};
   const OL={x:OR.x+nx*W,y:OR.y+ny*W};
@@ -562,7 +564,7 @@ function redraw(){
     lastResult=out; return;
   }
 
-  // Großfeld außen
+  // Großfeld außen + Mittellinie/Mittelkreis
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
@@ -572,7 +574,6 @@ function redraw(){
   addPt(OL,"Eckfahne oben links",out);
   addPt(OR,"Eckfahne oben rechts",out);
 
-  // Mittellinie & Mittelkreis
   const mu=mid(UL,UR), mo=mid(OL,OR);
   const mlGF=mid(UL,OL), mrGF=mid(UR,OR);
   addLine(mlGF,mrGF,"Mittellinie",out);
@@ -586,11 +587,9 @@ function redraw(){
   if(spR) addPt(spR,"Schnittpunkt Mittellinie & Seitenlinie rechts",out);
   if(spL) addPt(spL,"Schnittpunkt Mittellinie & Seitenlinie links",out);
 
-  // Torbereiche, 5er/16,5er, Elfer
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
   drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
 
-  // Verkleinertes Großfeld
   if(mode==='verkleinertes_grossfeld'){
     const dock=!!dockOption.checked;
     drawReducedField(UL,UR,OL,OR,ux,uy,nx,ny,dock,out);
@@ -600,28 +599,97 @@ function redraw(){
 }
 
 /* ========= Export ========= */
+// 1) GeoJSON: beide CRS-Varianten (WGS84 für SW Maps, UTM32 für QGIS)
 document.getElementById('exportGeoJSON').onclick=()=>{
   if(!lastResult){ alert('Kein Feld erzeugt.'); return; }
+
   const base=(fnameInput.value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
   const ts=new Date().toISOString().replace(/[:.]/g,'-');
-  const makeFC=()=>({type:'FeatureCollection', crs:{type:'name',properties:{name:'EPSG:25832'}}, features:[]});
 
-  const pts=makeFC();
+  const makeFC = (crsName)=>({type:'FeatureCollection', crs:{type:'name',properties:{name:crsName}}, features:[]});
+  const to4326 = (x,y)=> ol.proj.transform([x,y], PROJ, 'EPSG:4326'); // [lon,lat]
+  const save = (obj,fn)=>{ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/geo+json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; a.click(); URL.revokeObjectURL(a.href); };
+
+  // UTM32N
+  const pts_utm = makeFC('EPSG:25832');
   for(const p of lastResult.points){
-    pts.features.push({type:'Feature',properties:{name:p.name},geometry:{type:'Point',coordinates:[p.x,p.y]}});
+    pts_utm.features.push({type:'Feature',properties:{name:p.name},geometry:{type:'Point',coordinates:[p.x,p.y]}});
   }
-  const lines=makeFC();
+  const lines_utm = makeFC('EPSG:25832');
   for(const l of lastResult.lines){
     const coords = l.points ? l.points.map(q=>[q.x,q.y]) : [[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
-    lines.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}});
+    lines_utm.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}});
   }
 
-  const save=(obj,fn)=>{
-    const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/geo+json'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; a.click(); URL.revokeObjectURL(a.href);
-  };
-  save(pts,  `${base}_points_${ts}.geojson`);
-  save(lines,`${base}_lines_${ts}.geojson`);
+  // WGS84
+  const pts_wgs = makeFC('EPSG:4326');
+  for(const p of lastResult.points){
+    const [lon,lat] = to4326(p.x,p.y);
+    pts_wgs.features.push({type:'Feature',properties:{name:p.name},geometry:{type:'Point',coordinates:[lon,lat]}});
+  }
+  const lines_wgs = makeFC('EPSG:4326');
+  for(const l of lastResult.lines){
+    const src = l.points ? l.points.map(q=>[q.x,q.y]) : [[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
+    const coords = src.map(([x,y])=> to4326(x,y));
+    lines_wgs.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}});
+  }
+
+  save(pts_wgs,  `${base}_wgs84_points_${ts}.geojson`);
+  save(lines_wgs,`${base}_wgs84_lines_${ts}.geojson`);
+  save(pts_utm,  `${base}_utm32_points_${ts}.geojson`);
+  save(lines_utm,`${base}_utm32_lines_${ts}.geojson`);
+};
+
+// 2) GeoPackage: beide Layer in 1 Datei (EPSG:25832)
+document.getElementById('exportGPKG').onclick=async()=>{
+  if(!lastResult){ alert('Kein Feld erzeugt.'); return; }
+  if(!window.GeoPackage){ alert('GPKG-Bibliothek nicht verfügbar.'); return; }
+
+  try{
+    // Neues leeres GeoPackage im Speicher
+    const gp = await GeoPackage.create();
+
+    // Feature-Tabellen anlegen
+    await gp.createFeatureTable('punkte', {
+      geometryColumn: 'geom',
+      geometryType: 'POINT',
+      srsId: 25832,
+      properties: { name: 'TEXT' }
+    });
+    await gp.createFeatureTable('linien', {
+      geometryColumn: 'geom',
+      geometryType: 'LINESTRING',
+      srsId: 25832,
+      properties: { name: 'TEXT' }
+    });
+
+    // Punkte einfügen
+    for(const p of lastResult.points){
+      await gp.insertFeature('punkte', {
+        geom: { type:'Point', coordinates:[p.x,p.y] },
+        properties: { name: p.name }
+      });
+    }
+    // Linien einfügen
+    for(const l of lastResult.lines){
+      const coords = l.points ? l.points.map(q=>[q.x,q.y]) : [[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
+      await gp.insertFeature('linien', {
+        geom: { type:'LineString', coordinates: coords },
+        properties: { name: l.name }
+      });
+    }
+
+    // Datei als Blob exportieren
+    const blob = await gp.export();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=( (document.getElementById('fname').value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_') + '.gpkg');
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }catch(err){
+    console.error('GPKG-Export fehlgeschlagen:', err);
+    alert('GPKG-Export nicht möglich (Browser-Einschränkung). Bitte die GeoJSON-Exporte verwenden.');
+  }
 };
 
 /* ========= Start ========= */
