@@ -3,20 +3,18 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Franks Fußballfeld-Generator (stabil)</title>
+<title>Franks Fußballfeld-Generator – stabil</title>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
-
-<!-- Libs: Reihenfolge & Verfügbarkeit garantiert -->
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
 
-<!-- sql.js (WASM) + Ready-Promise -->
+<!-- sql.js (WASM) -->
 <script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
 <script>
   window.SQL_READY = window.initSqlJs({
     locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${f}`
-  }).then(SQL => { window.SQL = SQL; }).catch(e=>console.error('sql.js init', e));
+  }).then(SQL => { window.SQL = SQL; }).catch(console.error);
 </script>
 
 <!-- GeoPackage API -->
@@ -26,27 +24,27 @@
   html,body,#map{height:100%;margin:0}
   .ctrl{
     position:fixed;top:8px;left:50%;transform:translateX(-50%);
-    background:#fff;padding:.35rem .45rem;border-radius:.5rem;
+    background:#fff;padding:.35rem .45rem;border-radius:.6rem;
     box-shadow:0 2px 10px rgba(0,0,0,.16);z-index:1000;
-    display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;font-size:.84rem
+    display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;font-size:.86rem
   }
   button,select,input,label{
-    padding:.28rem .42rem;border:1px solid #d1d5db;border-radius:.4rem;background:#fff;cursor:pointer;
-    font-size:.84rem;line-height:1.1
+    padding:.28rem .42rem;border:1px solid #d1d5db;border-radius:.45rem;background:#fff;cursor:pointer;
+    font-size:.86rem;line-height:1.1
   }
   label{display:flex;gap:.35rem;align-items:center;border:none;padding:0;background:transparent}
   .primary{background:#0ea5e9;border-color:#0284c7;color:#fff}
-  .hint{
-    position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
-    background:#111827;color:#fff;padding:.28rem .45rem;border-radius:.4rem;z-index:1000;font-size:.8rem;opacity:.9
-  }
+  .muted{font-size:.78rem;opacity:.8}
+  .warn{color:#b45309;background:#fff7ed;border:1px solid #fed7aa;padding:.2rem .4rem;border-radius:.35rem}
   input[type=number]{width:5.8rem}
-  input[type=text]{width:13rem}
+  input[type=text]{width:12.5rem}
   .disabled-note{font-size:.78rem;opacity:.8;margin-left:.25rem}
   .scenario-note{font-size:.78rem;opacity:.85}
-  .warn{color:#b45309;background:#fff7ed;border:1px solid #fed7aa;padding:.25rem .4rem;border-radius:.35rem}
-  .muted{font-size:.78rem;opacity:.8}
-  @media (max-width:480px){ .ctrl{font-size:.8rem} button,select,input{font-size:.8rem} input[type=text]{width:11rem} }
+  .hint{
+    position:fixed;bottom:8px;left:50%;transform:translateX(-50%);
+    background:#111827;color:#fff;padding:.3rem .5rem;border-radius:.45rem;z-index:1000;font-size:.8rem;opacity:.92
+  }
+  @media (max-width:520px){ .ctrl{font-size:.8rem} button,select,input{font-size:.8rem} input[type=text]{width:10.6rem} }
 </style>
 </head>
 <body>
@@ -67,14 +65,17 @@
     <option value="">Szenario wählen…</option>
     <option value="g2v2_16x20">G 2v2 – 16×20 (Mittellinie, 4 Minitore)</option>
     <option value="g3v3_25x20">G/F 3v3 – 25×20 (6 m-Zonen, 4 Minitore)</option>
+    <option value="f3v3_25x20">F 3v3 – 25×20 (6 m-Zonen, 4 Minitore)</option>
     <option value="f5v5_40x25_mini">F/E 5v5 – 40×25 (4 Minitore, 6 m-Zonen)</option>
     <option value="f5v5_40x25_kf">F/E 5v5 – 40×25 (2 Kleinfeldtore, Mittellinie)</option>
+    <option value="e5v5_40x25_mini">E 5v5 – 40×25 (4 Minitore, 6 m-Zonen)</option>
+    <option value="e5v5_40x25_kf">E 5v5 – 40×25 (2 Kleinfeldtore, Mittellinie)</option>
     <option value="e7v7_55x35">E 7v7 – 55×35 (Mittellinie & Strafraum)</option>
   </select>
   <span id="kfInfo" class="scenario-note" style="display:none;"></span>
 
   <label>L (m): <input id="length" type="number" step="1" min="90" max="120" value="105"></label>
-  <label>B (m): <input id="width"  type="number" step="0.1" min="45" max="90"  value="65"><span id="presetNote" class="disabled-note" style="display:none;">(vorgegeben)</span></label>
+  <label>B (m): <input id="width"  type="number" step="0.1" min="45" max="90" value="65"><span id="presetNote" class="disabled-note" style="display:none;">(vorgegeben)</span></label>
 
   <label id="dockWrap" style="display:none;"><input type="checkbox" id="dockOption"> vGF andocken</label>
   <span id="dockLen" class="muted" style="display:none;"></span>
@@ -82,14 +83,14 @@
 
   <label><input id="pairMove" type="checkbox" checked> Beide Punkte verschieben</label>
 
-  <label>Dateiname: <input id="fname" type="text" value="Dateiname"><span class="muted">.gpkg / .geojson</span></label>
+  <label>Datei: <input id="fname" type="text" value="Dateiname"><span class="muted">.gpkg/.geojson</span></label>
 
   <button id="reset">Neu</button>
   <button id="exportGPKG">Export GPKG</button>
   <button id="exportGeoJSON">Export GeoJSON</button>
 </div>
 
-<div class="hint">Klick 1 = unten rechts (Start), Klick 2 = oben rechts (Richtung). Grüne Mitte verschiebt alles, rote Griffe je nach Schalter.</div>
+<div class="hint">Klick 1 = unten rechts (Start), Klick 2 = oben rechts (Richtung). Grün verschiebt alles, rote Griffe je nach Schalter.</div>
 
 <script>
 /* ===== PROJ ===== */
@@ -97,17 +98,17 @@ proj4.defs("EPSG:25832","+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs");
 ol.proj.proj4.register(proj4);
 const PROJ = ol.proj.get('EPSG:25832');
 
-/* ===== Styles ===== */
-const lineHalo = new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,255,255,0.98)', width: 6 }) });
-const lineCore = new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#111', width: 2.2 }) });
-const dashedHalo = new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,255,255,0.95)', width: 5, lineDash:[10,8] })});
-const dashedCore = new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#1f2937', width: 2, lineDash:[10,8] })});
-const pointStyle = new ol.style.Style({ image: new ol.style.Circle({ radius: 4.5, fill: new ol.style.Fill({ color: '#111' }), stroke: new ol.style.Stroke({ color: '#fff', width: 1.2 }) }) });
+/* ===== Styles: schwarze Linien mit weißem Halo ===== */
+const lineCore  = new ol.style.Style({ stroke: new ol.style.Stroke({ color:'#000', width:3.6 }) });
+const lineHalo  = new ol.style.Style({ stroke: new ol.style.Stroke({ color:'rgba(255,255,255,0.9)', width:1.6 }) });
+const dashedCore= new ol.style.Style({ stroke: new ol.style.Stroke({ color:'#000', width:3.2, lineDash:[12,10] }) });
+const dashedHalo= new ol.style.Style({ stroke: new ol.style.Stroke({ color:'rgba(255,255,255,0.9)', width:1.4, lineDash:[12,10] }) });
+const pointStyle= new ol.style.Style({ image: new ol.style.Circle({ radius:4.8, fill:new ol.style.Fill({color:'#000'}), stroke:new ol.style.Stroke({color:'#fff', width:1.4}) }) });
 
-/* ===== Map & Layers ===== */
+/* ===== Map & Vectorlayers ===== */
 const vectorSource = new ol.source.Vector({wrapX:false});
 const vectorLayer  = new ol.layer.Vector({
-  source:vectorSource,
+  source: vectorSource,
   style: f=>{
     const g=f.getGeometry(), styl=f.get('style');
     if (g instanceof ol.geom.LineString) return styl==='dashed'?[dashedHalo,dashedCore]:[lineHalo,lineCore];
@@ -117,10 +118,10 @@ const vectorLayer  = new ol.layer.Vector({
 const handleSrc = new ol.source.Vector();
 const handleLayer = new ol.layer.Vector({
   source:handleSrc,
-  style: f=>{
+  style:f=>{
     const role=f.get('role')||'p';
-    const clr = role==='center' ? '#10b981' : '#ef4444';
-    const st  = role==='center' ? '#065f46' : '#991b1b';
+    const clr= role==='center' ? '#10b981' : '#ef4444';
+    const st = role==='center' ? '#065f46' : '#991b1b';
     return new ol.style.Style({ image:new ol.style.Circle({radius:6, fill:new ol.style.Fill({color:clr}), stroke:new ol.style.Stroke({color:st,width:1.6})}) });
   }
 });
@@ -128,71 +129,76 @@ const handleLayer = new ol.layer.Vector({
 const map = new ol.Map({
   target:'map',
   layers:[vectorLayer, handleLayer],
-  view: new ol.View({projection: PROJ, center: ol.proj.fromLonLat([11.5756,48.1372], PROJ), zoom: 18, maxZoom: 22}),
+  view:new ol.View({projection:PROJ, center:ol.proj.fromLonLat([11.5756,48.1372],PROJ), zoom:18, maxZoom:22}),
   controls: ol.control.defaults.defaults()
 });
 
-/* ===== WMTS (LDBV) + WMS-Fallback ===== */
-const CAP_URL='https://geoservices.bayern.de/od/wmts/geobasis/v1/1.0.0/WMTSCapabilities.xml';
-const wmtsParser = new ol.format.WMTSCapabilities();
-let dop20Layer=null, webkarteLayer=null, dop20Wms=null;
+/* ===== Basiskarten: Webkarte + DOP20 (WMTS mit WMS-Fallback, exklusiv) ===== */
+let webkarteLayer=null, dop20Layer=null, dop20Wms=null;
 
-function addWMTSFromCaps(layerId, caps){
-  const opt = ol.source.WMTS.optionsFromCapabilities(caps, { layer:layerId, matrixSet:'EPSG:25832', projection:PROJ, crossOrigin:'anonymous' });
-  return new ol.layer.Tile({source:new ol.source.WMTS(opt)});
+function createWMTS(layerId){
+  return new ol.layer.Tile({
+    zIndex:0, visible:false,
+    source:new ol.source.WMTS({
+      url:'https://geoservices.bayern.de/od/wmts/geobasis/v1/1.0.0/{Layer}/{Style}/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.jpeg',
+      layer:layerId, matrixSet:'EPSG:25832', format:'image/jpeg', style:'default', requestEncoding:'REST', crossOrigin:'anonymous'
+    })
+  });
 }
-fetch(CAP_URL).then(r=>r.text()).then(txt=>{
-  const caps = wmtsParser.read(txt);
-  const layers = caps.Contents.Layer || [];
-  const pick=(rx,fallback=[])=>{
-    const m=layers.find(l=>rx.test(l.Identifier)); if(m) return m.Identifier;
-    for(const id of fallback){ const h=layers.find(l=>l.Identifier===id); if(h) return h.Identifier; }
-    return layers[0]?.Identifier;
-  };
-  const idWeb = pick(/webatlas|webkarte/i,['WEBATLAS','WebAtlasDE','by_webkarte']);
-  const idDOP = pick(/dop20/i,['DOP20_RGB','DOP20','by_dop20c']);
+webkarteLayer = createWMTS('by_webkarte');
+webkarteLayer.setVisible(true);
+map.getLayers().insertAt(0, webkarteLayer);
 
-  if(idWeb){ webkarteLayer = addWMTSFromCaps(idWeb, caps); webkarteLayer.setZIndex(0); webkarteLayer.setVisible(true); map.getLayers().insertAt(0, webkarteLayer); }
-  if(idDOP){ dop20Layer    = addWMTSFromCaps(idDOP, caps); dop20Layer.setZIndex(1); dop20Layer.setOpacity(0.96); dop20Layer.setVisible(false); map.getLayers().insertAt(0, dop20Layer); }
-}).catch(err=>{
-  console.warn('WMTS Capabilities fehlgeschlagen',err);
-  const osm = new ol.layer.Tile({source:new ol.source.OSM()});
-  osm.setZIndex(0); map.getLayers().insertAt(0, osm);
-});
+dop20Layer = createWMTS('by_dop20c');
+dop20Layer.setOpacity(1);
+dop20Layer.setVisible(false);
+map.getLayers().insertAt(0, dop20Layer);
 
-// WMS-Fallback bleibt unsichtbar bis genutzt
 dop20Wms = new ol.layer.Tile({
-  visible:false, zIndex:1,
-  source: new ol.source.TileWMS({
-    url: 'https://geoservices.bayern.de/wms/v1/ogc_dop20?',
-    params: { SERVICE:'WMS', VERSION:'1.3.0', REQUEST:'GetMap', LAYERS:'by_dop20c', STYLES:'', FORMAT:'image/jpeg', TILED:true, CRS:'EPSG:25832' },
+  zIndex:0, visible:false,
+  source:new ol.source.TileWMS({
+    url:'https://geoservices.bayern.de/wms/v1/ogc_dop20?',
+    params:{SERVICE:'WMS',VERSION:'1.3.0',REQUEST:'GetMap',LAYERS:'by_dop20c',STYLES:'',FORMAT:'image/jpeg',TILED:true,CRS:'EPSG:25832'},
     crossOrigin:'anonymous'
   })
 });
 map.getLayers().insertAt(0, dop20Wms);
 
-document.getElementById('toggleDOP').onclick=()=>{
-  const wmtsOk = !!dop20Layer;
-  const cur = wmtsOk ? dop20Layer.getVisible() : dop20Wms.getVisible();
-  const next=!cur;
-  if (wmtsOk) dop20Layer.setVisible(next); else dop20Wms.setVisible(next);
-  document.getElementById('toggleDOP').textContent = next ? 'Orthofoto aus' : 'Orthofoto';
-  if (next && map.getView().getZoom()<19) map.getView().setZoom(19);
+// Wenn WMTS-Kachel fehlschlägt, auf WMS umschalten (einmalig)
+dop20Layer.getSource().on('tileloaderror', ()=>{
+  if (dop20Layer.getVisible()) { dop20Layer.setVisible(false); dop20Wms.setVisible(true); }
+});
+
+// Exklusive Umschaltung
+document.getElementById('toggleDOP').onclick = () => {
+  const dopActive = dop20Layer.getVisible() || dop20Wms.getVisible();
+  if (!dopActive) {
+    webkarteLayer.setVisible(false);
+    dop20Layer.setVisible(true);
+    dop20Wms.setVisible(false);
+    document.getElementById('toggleDOP').textContent = 'Orthofoto aus';
+    if (map.getView().getZoom()<19) map.getView().setZoom(19);
+  } else {
+    dop20Layer.setVisible(false);
+    dop20Wms.setVisible(false);
+    webkarteLayer.setVisible(true);
+    document.getElementById('toggleDOP').textContent = 'Orthofoto';
+  }
 };
 
 /* ===== Standort robust ===== */
-const locStatus = document.getElementById('locStatus');
-const setLocStatus = t => locStatus.textContent = t||'';
+const locStatus=document.getElementById('locStatus');
+const setLocStatus=t=>locStatus.textContent=t||'';
 let gpsPointFeature=null, gpsCircleFeature=null;
 
 function showFix(lon,lat,acc){
-  const c=ol.proj.fromLonLat([lon,lat], PROJ);
-  map.getView().animate({center:c, zoom: Math.max(map.getView().getZoom(), 19), duration:350});
+  const c=ol.proj.fromLonLat([lon,lat],PROJ);
+  map.getView().animate({center:c, zoom:Math.max(map.getView().getZoom(),19), duration:350});
   if(!gpsPointFeature){
     gpsPointFeature=new ol.Feature(new ol.geom.Point(c));
     gpsPointFeature.setStyle(new ol.style.Style({ image:new ol.style.Circle({radius:5,fill:new ol.style.Fill({color:'#2563eb'}),stroke:new ol.style.Stroke({color:'#1e40af',width:1})}) }));
     gpsCircleFeature=new ol.Feature(new ol.geom.Circle(c, acc));
-    gpsCircleFeature.setStyle(new ol.style.Style({ stroke:new ol.style.Stroke({color:'#2563eb',width:1,lineDash:[4,4]}), fill:new ol.style.Fill({color:'rgba(59,130,246,0.06)'}) }));
+    gpsCircleFeature.setStyle(new ol.style.Style({ stroke:new ol.style.Stroke({color:'#2563eb', width:1, lineDash:[4,4]}), fill:new ol.style.Fill({color:'rgba(59,130,246,0.06)'}) }));
     vectorSource.addFeatures([gpsCircleFeature,gpsPointFeature]);
   }else{
     gpsPointFeature.getGeometry().setCoordinates(c);
@@ -201,7 +207,7 @@ function showFix(lon,lat,acc){
   }
 }
 function geoErrorMessage(err){
-  return ({1:'Zugriff verweigert – bitte Standortfreigabe erlauben.',2:'Position nicht bestimmbar.',3:'Zeitüberschreitung – bitte erneut versuchen.'}[err.code] || ('Geolocation-Fehler: '+(err.message||err)));
+  return ({1:'Zugriff verweigert – bitte Standortfreigabe erlauben.',2:'Position nicht bestimmbar.',3:'Zeitüberschreitung – bitte erneut versuchen.'}[err.code]||('Geolocation-Fehler: '+(err.message||err)));
 }
 document.getElementById('loc').onclick=()=>{
   if(!navigator.geolocation){ alert('Geolocation nicht verfügbar.'); return; }
@@ -234,7 +240,7 @@ document.getElementById('loc').onclick=()=>{
   );
 };
 
-/* ===== UI ===== */
+/* ===== UI & Szenarien ===== */
 const el=id=>document.getElementById(id);
 const modeSel=el('mode'), kfScenario=el('kfScenario'), kfInfo=el('kfInfo'),
       lengthInput=el('length'), widthInput=el('width'),
@@ -250,7 +256,7 @@ const scenarioDims={
   f5v5_40x25_kf:{L:40,W:25,info:"2 Kleinfeldtore, Mittellinie"},
   e5v5_40x25_mini:{L:40,W:25,info:"4 Minitore, 6 m-Zonen"},
   e5v5_40x25_kf:{L:40,W:25,info:"2 Kleinfeldtore, Mittellinie"},
-  e7v7_55x35:{L:55,W:35,info:"Mittellinie, 5-m-Tore + Strafraum"}
+  e7v7_55x35:{L:55,W:35,info:"Mittellinie & 5-m-Tore + Strafraum"}
 };
 const getScenario=()=>scenarioDims[kfScenario.value]||null;
 
@@ -273,7 +279,7 @@ function updateDockAvailability(){
     dockWarn.style.display='inline';
     dockWarn.textContent = std<70
       ? `Hinweis: Standard vGF = ${Math.round(std)} m (<70 m). Andocken = ${dc.toFixed(1)} m.`
-      : `Option verfügbar: Standard ${Math.round(std)} m, Andocken ${dc.toFixed(1)} m.`;
+      : `Option: Standard ${Math.round(std)} m, Andocken ${dc.toFixed(1)} m.`;
   }
 }
 function updateInputLocking(){
@@ -290,10 +296,13 @@ kfScenario.addEventListener('change',()=>{ updateScenarioInfo(); if(p1&&p2) redr
 lengthInput.addEventListener('change',()=>{ updateDockAvailability(); if(p1&&p2) redraw(); });
 widthInput.addEventListener('change',()=>{ if(p1&&p2) redraw(); });
 
-/* ===== Zwei Klicks + Drag-Handles ===== */
+/* ===== Klicks & Verschieben ===== */
 let p1=null, p2=null;
 const clickOverlaySrc = new ol.source.Vector();
-const clickOverlay = new ol.layer.Vector({source:clickOverlaySrc, style: new ol.style.Style({ image:new ol.style.Circle({radius:5, fill:new ol.style.Fill({color:'#ef4444'})})})});
+const clickOverlay = new ol.layer.Vector({
+  source:clickOverlaySrc,
+  style:new ol.style.Style({ image:new ol.style.Circle({radius:5, fill:new ol.style.Fill({color:'#ef4444'})}) })
+});
 map.addLayer(clickOverlay);
 
 map.on('click',evt=>{
@@ -306,7 +315,7 @@ document.getElementById('reset').onclick=()=>{
   lastResult=null; gpsPointFeature=gpsCircleFeature=null; setLocStatus('');
 };
 
-let h1=null,h2=null,hc=null, translateInteraction=null, lastCenter=null, lastDragCoord=null;
+let h1=null,h2=null,hc=null, translateInteraction=null, lastDragCoord=null;
 function ensureHandles(){
   if(!p1||!p2) return;
   const center=[(p1[0]+p2[0])/2,(p1[1]+p2[1])/2];
@@ -317,37 +326,26 @@ function ensureHandles(){
     handleSrc.addFeatures([h1,h2,hc]);
 
     translateInteraction=new ol.interaction.Translate({features:new ol.Collection([h1,h2,hc])});
-
-    translateInteraction.on('translatestart',(e)=>{
+    translateInteraction.on('translatestart',e=>{
       const f=e.features.item(0);
       lastDragCoord = f.getGeometry().getCoordinates();
     });
-
     translateInteraction.on('translating',e=>{
       const f=e.features.item(0);
       const cur=f.getGeometry().getCoordinates();
       const dx=cur[0]-lastDragCoord[0], dy=cur[1]-lastDragCoord[1];
+      const pairMove=!!pairMoveCheckbox.checked;
 
-      const pairMove = !!pairMoveCheckbox?.checked;
-
-      if(f===hc){
-        // Grüner Mittelpunkt: immer gesamtes Feld verschieben
-        p1=[p1[0]+dx,p1[1]+dy];
-        p2=[p2[0]+dx,p2[1]+dy];
-      }else if(pairMove){
-        // Rote Griffe verschieben auch komplett (wie früher)
+      if(f===hc || pairMove){
         p1=[p1[0]+dx,p1[1]+dy];
         p2=[p2[0]+dx,p2[1]+dy];
       }else{
-        // Klassisch: nur der gezogene rote Griff ändert
         if(f===h1) p1=cur;
         if(f===h2) p2=cur;
       }
-
       lastDragCoord=cur;
       redraw({keepHandles:true});
     });
-
     translateInteraction.on('translateend',()=>{ lastDragCoord=null; });
     map.addInteraction(translateInteraction);
   }else{
@@ -360,20 +358,30 @@ function ensureHandles(){
 /* ===== Geometrie-Helpers ===== */
 const norm=(dx,dy)=>{const L=Math.hypot(dx,dy)||1;return{ux:dx/L,uy:dy/L,L}};
 const mid =(A,B)=>({x:(A.x+B.x)/2,y:(A.y+B.y)/2});
-function addLine(a,b,name,out,style){ const f=new ol.Feature(new ol.geom.LineString([[a.x,a.y],[b.x,b.y]])); f.set('name',name); if(style) f.set('style',style); vectorSource.addFeature(f); out.lines.push({name,p1:a,p2:b,style}); }
-function addPt(p,name,out){ const f=new ol.Feature(new ol.geom.Point([p.x,p.y])); f.set('name',name); vectorSource.addFeature(f); out.points.push({name,x:p.x,y:p.y}); }
-function addPoly(points,name,out){ const coords=points.map(p=>[p.x,p.y]); const f=new ol.Feature(new ol.geom.LineString(coords)); f.set('name',name); vectorSource.addFeature(f); out.lines.push({name,points}); }
+function addLine(a,b,name,out,style){
+  const f=new ol.Feature(new ol.geom.LineString([[a.x,a.y],[b.x,b.y]]));
+  f.set('name',name); if(style) f.set('style',style); vectorSource.addFeature(f);
+  out.lines.push({name,p1:a,p2:b,style});
+}
+function addPt(p,name,out){
+  const f=new ol.Feature(new ol.geom.Point([p.x,p.y])); f.set('name',name); vectorSource.addFeature(f);
+  out.points.push({name,x:p.x,y:p.y});
+}
+function addPoly(points,name,out){
+  const coords=points.map(p=>[p.x,p.y]); const f=new ol.Feature(new ol.geom.LineString(coords));
+  f.set('name',name); vectorSource.addFeature(f); out.lines.push({name,points});
+}
 function circlePts(c,r,seg=96){ const pts=[]; for(let i=0;i<=seg;i++){ const a=2*Math.PI*i/seg; pts.push({x:c.x+r*Math.cos(a),y:c.y+r*Math.sin(a)});} return pts; }
 function lineIntersect(a1,a2,b1,b2){
   const x1=a1.x,y1=a1.y,x2=a2.x,y2=a2.y,x3=b1.x,y3=b1.y,x4=b2.x,y4=b2.y;
   const den=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4); if(Math.abs(den)<1e-9)return null;
   return {
     x: ((x1*y2 - y1*x2)*(x3 - x4) - (x1 - x2)*(x3*y4 - y3*x4))/den,
-    y: ((x1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))/den
+    y: ((y1*y2 - y1*x2)*(y3 - y4) - (y1 - y2)*(x3*y4 - y3*x4))/den
   };
 }
 
-/* ===== Feldzeichner ===== */
+/* ===== Detailzeichner ===== */
 function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const torHalb=7.32/2;
   const tor_r={x:mitte.x+nx*torHalb,y:mitte.y+ny*torHalb};
@@ -383,7 +391,6 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(tor_l,`Torpfosten ${prefix} links`,out);
   addLine(tor_r,tor_l,`Torlinie ${prefix}`,out);
 
-  // 5m
   const f5r={x:tor_r.x+nx*5.5,y:tor_r.y+ny*5.5};
   const f5l={x:tor_l.x-nx*5.5,y:tor_l.y-ny*5.5};
   addPt(f5r,`5m Fusspunkt ${prefix} rechts`,out);
@@ -396,7 +403,6 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(e5r,`5m Eckpunkt ${prefix} rechts`,out);
   addPt(e5l,`5m Eckpunkt ${prefix} links`,out);
 
-  // 16,5m
   const f16r={x:tor_r.x+nx*16.5,y:tor_r.y+ny*16.5};
   const f16l={x:tor_l.x-nx*16.5,y:tor_l.y-ny*16.5};
   addPt(f16r,`16,5m Fusspunkt ${prefix} rechts`,out);
@@ -409,29 +415,23 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addLine(f16l,e16l,`16,5m Linie ${prefix} links`,out);
   addLine(e16r,e16l,`16,5m Parallel ${prefix}`,out);
 
-  // 11m-Punkt
   const elfer={x:mitte.x+ux*11,y:mitte.y+uy*11};
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
 function drawMiniGoalsOnEnd(endLeft,endRight,namePrefix,out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const el=Math.hypot(ex,ey)||1, vx=ex/el, vy=ey/el;
-  const L1={x:endLeft.x+vx*2,y:endLeft.y+vy*2};
-  const L2={x:L1.x+vx*2,y:L1.y+vy*2};
-  addPt(L1,`${namePrefix} Minitor-Pfosten links`,out);
-  addLine(L1,L2,`${namePrefix} Minitor links (2 m)`,out);
-  const R1={x:endRight.x-vx*2,y:endRight.y-vy*2};
-  const R2={x:R1.x-vx*2,y:R1.y-vy*2};
-  addPt(R1,`${namePrefix} Minitor-Pfosten rechts`,out);
-  addLine(R1,R2,`${namePrefix} Minitor rechts (2 m)`,out);
+  const L1={x:endLeft.x+vx*2,y:endLeft.y+vy*2}, L2={x:L1.x+vx*2,y:L1.y+vy*2};
+  const R1={x:endRight.x-vx*2,y:endRight.y-vy*2}, R2={x:R1.x-vx*2,y:R1.y-vy*2};
+  addPt(L1,`${namePrefix} Minitor-Pfosten links`,out);  addLine(L1,L2,`${namePrefix} Minitor links (2 m)`,out);
+  addPt(R1,`${namePrefix} Minitor-Pfosten rechts`,out); addLine(R1,R2,`${namePrefix} Minitor rechts (2 m)`,out);
 }
 function drawKleinfeldGoalOnEnd(endLeft,endRight,namePrefix,out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const el=Math.hypot(ex,ey)||1, vx=ex/el, vy=ey/el;
   const mid={x:(endLeft.x+endRight.x)/2, y:(endLeft.y+endRight.y)/2};
   addPt(mid,`${namePrefix} Tor-Mittelpunkt`,out);
-  const pR={x:mid.x+vx*2.5, y:mid.y+vy*2.5};
-  const pL={x:mid.x-vx*2.5, y:mid.y-vy*2.5};
+  const pR={x:mid.x+vx*2.5, y:mid.y+vy*2.5}, pL={x:mid.x-vx*2.5, y:mid.y-vy*2.5};
   addPt(pR,`${namePrefix} Torpfosten rechts (±2.5m)`,out);
   addPt(pL,`${namePrefix} Torpfosten links (±2.5m)`,out);
   addLine(pL,pR,`${namePrefix} Torlinie (5 m)`,out);
@@ -441,31 +441,25 @@ function markE7v7End(endLeft,endRight,intoFieldDir,namePrefix,out){
   const el=Math.hypot(ex,ey)||1, vx=ex/el, vy=ey/el;
   const mid={x:(endLeft.x+endRight.x)/2, y:(endLeft.y+endRight.y)/2};
   addPt(mid,`${namePrefix} Tor-Mittelpunkt`,out);
-  const pR={x:mid.x+vx*2.5, y:mid.y+vy*2.5};
-  const pL={x:mid.x-vx*2.5, y:mid.y-vy*2.5};
+  const pR={x:mid.x+vx*2.5, y:mid.y+vy*2.5}, pL={x:mid.x-vx*2.5, y:mid.y-vy*2.5};
   addPt(pR,`${namePrefix} Torpfosten rechts (±2.5m)`,out);
   addPt(pL,`${namePrefix} Torpfosten links (±2.5m)`,out);
   addLine(pL,pR,`${namePrefix} Torlinie (5 m)`,out);
-  const fL={x:pL.x - vx*12, y:pL.y - vy*12};
-  const fR={x:pR.x + vx*12, y:pR.y + vy*12};
+  const fL={x:pL.x - vx*12, y:pL.y - vy*12}, fR={x:pR.x + vx*12, y:pR.y + vy*12};
   addPt(fL,`${namePrefix} Fusspunkt Strafraum links (+12m)`,out);
   addPt(fR,`${namePrefix} Fusspunkt Strafraum rechts (+12m)`,out);
   const ix=intoFieldDir.x, iy=intoFieldDir.y;
-  const cL={x:fL.x + ix*12, y:fL.y + iy*12};
-  const cR={x:fR.x + ix*12, y:fR.y + iy*12};
+  const cL={x:fL.x + ix*12, y:fL.y + iy*12}, cR={x:fR.x + ix*12, y:fR.y + iy*12};
   addPt(cL,`${namePrefix} Ecke Strafraum links (12m orth.)`,out);
   addPt(cR,`${namePrefix} Ecke Strafraum rechts (12m orth.)`,out);
   addLine(fL,cL,`${namePrefix} Strafraum Linie links`,out);
   addLine(fR,cR,`${namePrefix} Strafraum Linie rechts`,out);
   addLine(cL,cR,`${namePrefix} Strafraum Vorderkante`,out);
-  const sp={x:mid.x + ix*8, y:mid.y + iy*8};
-  addPt(sp,`${namePrefix} Strafstoßpunkt (8 m)`,out);
+  const sp={x:mid.x + ix*8, y:mid.y + iy*8}; addPt(sp,`${namePrefix} Strafstoßpunkt (8 m)`,out);
 }
 function drawSchusszonen(UL,UR,OL,OR, ux,uy, namePrefix, out){
-  const bottomA={x:UL.x+ux*6, y:UL.y+uy*6};
-  const bottomB={x:UR.x+ux*6, y:UR.y+uy*6};
-  const topA   ={x:OL.x-ux*6, y:OL.y-uy*6};
-  const topB   ={x:OR.x-ux*6, y:OR.y-uy*6};
+  const bottomA={x:UL.x+ux*6, y:UL.y+uy*6}, bottomB={x:UR.x+ux*6, y:UR.y+uy*6};
+  const topA   ={x:OL.x-ux*6, y:OL.y-uy*6}, topB   ={x:OR.x-ux*6, y:OR.y-uy*6};
   addLine(bottomA,bottomB,`${namePrefix} Schusszone unten (6 m)`,out,'dashed');
   addLine(topA,topB,      `${namePrefix} Schusszone oben (6 m)`,out,'dashed');
   return {bottomA,bottomB,topA,topB};
@@ -482,35 +476,25 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out){
   addLine(bL,bR,"(vGF) Torlinie unten",out);
   addLine(tL,tR,"(vGF) Torlinie oben",out);
 
-  const mB={x:(bL.x+bR.x)/2,y:(bL.y+bR.y)/2};
-  const mT={x:(tL.x+tR.x)/2,y:(tL.y+tR.y)/2};
-  addPt(mB,"(vGF) Tor-Mittelpunkt unten",out);
-  addPt(mT,"(vGF) Tor-Mittelpunkt oben",out);
+  const mB={x:(bL.x+bR.x)/2,y:(bL.y+bR.y)/2}, mT={x:(tL.x+tR.x)/2,y:(tL.y+tR.y)/2};
+  addPt(mB,"(vGF) Tor-Mittelpunkt unten",out); addPt(mT,"(vGF) Tor-Mittelpunkt oben",out);
 
-  const pBR={x:mB.x+nx*2.5,y:mB.y+ny*2.5};
-  const pBL={x:mB.x-nx*2.5,y:mB.y-ny*2.5};
-  const pTR={x:mT.x+nx*2.5,y:mT.y+ny*2.5};
-  const pTL={x:mT.x-nx*2.5,y:mT.y-ny*2.5};
-  addPt(pBR,"(vGF) Pfosten unten rechts",out);
-  addPt(pBL,"(vGF) Pfosten unten links",out);
-  addPt(pTR,"(vGF) Pfosten oben rechts",out);
-  addPt(pTL,"(vGF) Pfosten oben links",out);
+  const pBR={x:mB.x+nx*2.5,y:mB.y+ny*2.5}, pBL={x:mB.x-nx*2.5,y:mB.y-ny*2.5};
+  const pTR={x:mT.x+nx*2.5,y:mT.y+ny*2.5}, pTL={x:mT.x-nx*2.5,y:mT.y-ny*2.5};
+  addPt(pBR,"(vGF) Pfosten unten rechts",out); addPt(pBL,"(vGF) Pfosten unten links",out);
+  addPt(pTR,"(vGF) Pfosten oben rechts",out);  addPt(pTL,"(vGF) Pfosten oben links",out);
   addLine(pBL,pBR,"(vGF) Torlinie unten (5 m)",out);
   addLine(pTL,pTR,"(vGF) Torlinie oben (5 m)",out);
 
-  const sFB_R={x:mB.x+nx*14.5,y:mB.y+ny*14.5};
-  const sFB_L={x:mB.x-nx*14.5,y:mB.y-ny*14.5};
-  const sFT_R={x:mT.x+nx*14.5,y:mT.y+ny*14.5};
-  const sFT_L={x:mT.x-nx*14.5,y:mT.y-ny*14.5};
+  const sFB_R={x:mB.x+nx*14.5,y:mB.y+ny*14.5}, sFB_L={x:mB.x-nx*14.5,y:mB.y-ny*14.5};
+  const sFT_R={x:mT.x+nx*14.5,y:mT.y+ny*14.5}, sFT_L={x:mT.x-nx*14.5,y:mT.y-ny*14.5};
   addPt(sFB_R,"(vGF) Strafraum-Fusspunkt unten rechts",out);
   addPt(sFB_L,"(vGF) Strafraum-Fusspunkt unten links",out);
   addPt(sFT_R,"(vGF) Strafraum-Fusspunkt oben rechts",out);
   addPt(sFT_L,"(vGF) Strafraum-Fusspunkt oben links",out);
 
-  const cB_R={x:sFB_R.x+ux*12,y:sFB_R.y+uy*12};
-  const cB_L={x:sFB_L.x+ux*12,y:sFB_L.y+uy*12};
-  const cT_R={x:sFT_R.x-ux*12,y:sFT_R.y-uy*12};
-  const cT_L={x:sFT_L.x-ux*12,y:sFT_L.y-uy*12};
+  const cB_R={x:sFB_R.x+ux*12,y:sFB_R.y+uy*12}, cB_L={x:sFB_L.x+ux*12,y:sFB_L.y+uy*12};
+  const cT_R={x:sFT_R.x-ux*12,y:sFT_R.y-uy*12}, cT_L={x:sFT_L.x-ux*12,y:sFT_L.y-uy*12};
   addPt(cB_R,"(vGF) Strafraum-Ecke unten rechts",out);
   addPt(cB_L,"(vGF) Strafraum-Ecke unten links",out);
   addPt(cT_R,"(vGF) Strafraum-Ecke oben rechts",out);
@@ -522,10 +506,8 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out){
   addLine(cB_L,cB_R,"(vGF) Strafraum-Front unten",out);
   addLine(cT_L,cT_R,"(vGF) Strafraum-Front oben",out);
 
-  const sB_R={x:mB.x+nx*24.5,y:mB.y+ny*24.5};
-  const sB_L={x:mB.x-nx*24.5,y:mB.y-ny*24.5};
-  const sT_R={x:mT.x+nx*24.5,y:mT.y+ny*24.5};
-  const sT_L={x:mT.x-nx*24.5,y:mT.y-ny*24.5};
+  const sB_R={x:mB.x+nx*24.5,y:mB.y+ny*24.5}, sB_L={x:mB.x-nx*24.5,y:mB.y-ny*24.5};
+  const sT_R={x:mT.x+nx*24.5,y:mT.y+ny*24.5}, sT_L={x:mT.x-nx*24.5,y:mT.y-ny*24.5};
   addLine(sB_L,sT_L,"(vGF) Seitenlinie links",out);
   addLine(sB_R,sT_R,"(vGF) Seitenlinie rechts",out);
 
@@ -534,21 +516,19 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out){
   addPt(sT_L,"(vGF) Spielfeldecke oben links",out);
   addPt(sT_R,"(vGF) Spielfeldecke oben rechts",out);
 
-  const midLeft={x:(sB_L.x+sT_L.x)/2,y:(sB_L.y+sT_L.y)/2};
-  const midRight={x:(sB_R.x+sT_R.x)/2,y:(sB_R.y+sT_R.y)/2};
+  const midLeft={x:(sB_L.x+sT_L.x)/2,y:(sB_L.y+sT_L.y)/2}, midRight={x:(sB_R.x+sT_R.x)/2,y:(sB_R.y+sT_R.y)/2};
   addLine(midLeft,midRight,"(vGF) Mittellinie",out);
   const kickoff={x:(midLeft.x+midRight.x)/2,y:(midLeft.y+midRight.y)/2};
   addPt(kickoff,"(vGF) Anstoßpunkt",out);
   addPt(midLeft,"(vGF) Schnittpunkt ML & SL links",out);
   addPt(midRight,"(vGF) Schnittpunkt ML & SL rechts",out);
 
-  const penB={x:mB.x+ux*9,y:mB.y+uy*9};
-  const penT={x:mT.x-ux*9,y:mT.y-uy*9};
+  const penB={x:mB.x+ux*9,y:mB.y+uy*9}, penT={x:mT.x-ux*9,y:mT.y-uy*9};
   addPt(penB,"(vGF) Strafstoßpunkt unten (9 m)",out);
   addPt(penT,"(vGF) Strafstoßpunkt oben (9 m)",out);
 }
 
-/* Kleinfeld separat */
+/* Kleinfeld separat inkl. Schnittpunkte */
 function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
   const s=kfScenario.value;
   addLine(UL,UR,"(KF) Grundlinie unten",out);
@@ -560,25 +540,21 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
   addPt(OL,"(KF) Ecke oben links",out);
   addPt(OR,"(KF) Ecke oben rechts",out);
 
-  const sideRight={A:UR,B:OR}, sideLeft={A:UL,B:OL};
   const ml=mid(UL,OL), mr=mid(UR,OR);
-  const midCenter={x:(ml.x+mr.x)/2, y:(ml.y+mr.y)/2};
   const needMid=(s==='g2v2_16x20'||s==='f5v5_40x25_kf'||s==='e5v5_40x25_kf'||s==='e7v7_55x35');
   if(needMid){
     addLine(ml,mr,"(KF) Mittellinie",out);
-    addPt(midCenter,"(KF) Mittellinie Mittelpunkt",out);
-    const spR=lineIntersect(UR,OR,ml,mr);
-    const spL=lineIntersect(UL,OL,ml,mr);
+    const midC={x:(ml.x+mr.x)/2,y:(ml.y+mr.y)/2};
+    addPt(midC,"(KF) Mittellinie Mittelpunkt",out);
+    const spR=lineIntersect(UR,OR,ml,mr), spL=lineIntersect(UL,OL,ml,mr);
     if(spR) addPt(spR,"(KF) Schnittpunkt ML & SL rechts",out);
     if(spL) addPt(spL,"(KF) Schnittpunkt ML & SL links",out);
   }
   const needZones=(s==='g3v3_25x20'||s==='f3v3_25x20'||s==='e5v5_40x25_mini'||s==='f5v5_40x25_mini');
   if(needZones){
     const z=drawSchusszonen(UL,UR,OL,OR,ux,uy,"(KF)",out);
-    const izR=lineIntersect(sideRight.A,sideRight.B,z.bottomA,z.bottomB);
-    const izL=lineIntersect(sideLeft.A, sideLeft.B ,z.bottomA,z.bottomB);
-    const ozR=lineIntersect(sideRight.A,sideRight.B,z.topA   ,z.topB   );
-    const ozL=lineIntersect(sideLeft.A ,sideLeft.B ,z.topA   ,z.topB   );
+    const izR=lineIntersect(UR,OR,z.bottomA,z.bottomB), izL=lineIntersect(UL,OL,z.bottomA,z.bottomB);
+    const ozR=lineIntersect(UR,OR,z.topA,z.topB),     ozL=lineIntersect(UL,OL,z.topA,z.topB);
     if(izR) addPt(izR,"(KF) Schnittpunkt rechts & 6m unten",out);
     if(izL) addPt(izL,"(KF) Schnittpunkt links  & 6m unten",out);
     if(ozR) addPt(ozR,"(KF) Schnittpunkt rechts & 6m oben",out);
@@ -591,13 +567,12 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
     drawKleinfeldGoalOnEnd(UL,UR,"(KF) unten",out);
     drawKleinfeldGoalOnEnd(OL,OR,"(KF) oben",out);
   } else if(s==='e7v7_55x35'){
-    const intoB={x:ux,y:uy}, intoT={x:-ux,y:-uy};
-    markE7v7End(UL,UR,intoB,"(KF) unten",out);
-    markE7v7End(OL,OR,intoT,"(KF) oben",out);
+    markE7v7End(UL,UR,{x:ux,y:uy},"(KF) unten",out);
+    markE7v7End(OL,OR,{x:-ux,y:-uy},"(KF) oben",out);
   }
 }
 
-/* ===== Zeichnen ===== */
+/* ===== Zeichnen (alle Modi) ===== */
 let lastResult=null;
 function redraw(opts={}){
   if(!p1||!p2) return;
@@ -615,7 +590,7 @@ function redraw(opts={}){
     len=Lval; W=Wval;
   }
 
-  // Rechte Längsseite: UR = Klick1, OR = Klick2
+  // rechte Längsseite: UR = Klick1, OR = Klick2
   const UR={x:P1.x,y:P1.y}, OR={x:P1.x+ux*len,y:P1.y+uy*len}, OL={x:OR.x+nx*W,y:OR.y+ny*W}, UL={x:UR.x+nx*W,y:UR.y+ny*W};
   const out={points:[],lines:[]};
 
@@ -626,29 +601,24 @@ function redraw(opts={}){
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
   addLine(OL,UL,"Seitenlinie links",out);
-  addPt(UL,"Eckfahne unten links",out);
-  addPt(UR,"Eckfahne unten rechts",out);
-  addPt(OL,"Eckfahne oben links",out);
-  addPt(OR,"Eckfahne oben rechts",out);
+  addPt(UL,"Eckfahne unten links",out); addPt(UR,"Eckfahne unten rechts",out);
+  addPt(OL,"Eckfahne oben links",out);  addPt(OR,"Eckfahne oben rechts",out);
 
-  // Mittellinie, Mittelpunkt, Mittelkreis
+  // Mittellinie, Mittelpunkt, Mittelkreis, Schnittpunkte
   const mu=mid(UL,UR), mo=mid(OL,OR);
   const mlGF=mid(UL,OL), mrGF=mid(UR,OR);
   addLine(mlGF,mrGF,"Mittellinie",out);
-  const midCenterGF={x:(mlGF.x+mrGF.x)/2, y:(mlGF.y+mrGF.y)/2};
-  addPt(midCenterGF,"Mittellinie Mittelpunkt",out);
-  const center={x:(mu.x+mo.x)/2,y:(mu.y+mo.y)/2};
-  addPoly(circlePts(center,9.15,96),"Mittelkreis",out);
-
+  const midCenterGF={x:(mlGF.x+mrGF.x)/2, y:(mlGF.y+mrGF.y)/2}; addPt(midCenterGF,"Mittellinie Mittelpunkt",out);
+  const center={x:(mu.x+mo.x)/2,y:(mu.y+mo.y)/2}; addPoly(circlePts(center,9.15,96),"Mittelkreis",out);
   const spR=lineIntersect(UR,OR,mlGF,mrGF), spL=lineIntersect(UL,OL,mlGF,mrGF);
   if(spR) addPt(spR,"Schnittpunkt ML & SR rechts",out);
   if(spL) addPt(spL,"Schnittpunkt ML & SR links",out);
 
-  // Torbereiche
+  // Torbereiche (5m, 16.5m, Elfmeter)
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
   drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
 
-  // Verkleinertes Großfeld
+  // vGF
   if(mode==='verkleinertes_grossfeld'){ const dock=!!dockOption.checked; drawReducedField(UL,UR,OL,OR,ux,uy,nx,ny,dock,out); }
 
   lastResult=out; ensureHandles();
@@ -709,7 +679,7 @@ document.getElementById('exportGPKG').onclick=async()=>{
         definition:'PROJCS["ETRS89 / UTM zone 32N",GEOGCS["ETRS89",DATUM["ETRS_1989",SPHEROID["GRS 1980",6378137,298.257222101,AUTHORITY["EPSG","7019"]],AUTHORITY["EPSG","6258"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",9],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","25832"]]',
         description:'EPSG:25832'
       });
-    }catch(e){/* existiert evtl. schon */}
+    }catch(e){}
 
     await gp.createFeatureTable('punkte',{geometryColumn:'geom',geometryType:'POINT',srsId:25832,properties:{name:'TEXT'}});
     await gp.createFeatureTable('linien',{geometryColumn:'geom',geometryType:'LINESTRING',srsId:25832,properties:{name:'TEXT'}});
@@ -723,7 +693,7 @@ document.getElementById('exportGPKG').onclick=async()=>{
     }
 
     const blob=await gp.export();
-    const base=(document.getElementById('fname').value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
+    const base=(fnameInput.value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${base}.gpkg`; a.click(); URL.revokeObjectURL(a.href);
   }catch(e){
     console.error('GPKG-Export Fehler:', e);
@@ -731,7 +701,7 @@ document.getElementById('exportGPKG').onclick=async()=>{
   }
 };
 
-/* ===== Start ===== */
+/* ===== Init ===== */
 updateInputLocking();
 </script>
 </body>
