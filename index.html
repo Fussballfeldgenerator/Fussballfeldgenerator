@@ -7,18 +7,20 @@
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
 
-<!-- Projektion & OpenLayers -->
-<script src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+<!-- OpenLayers & proj4 -->
+<script defer src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
 
-<!-- sql.js (WASM) + GeoPackage API -->
-<script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
+<!-- sql.js (WASM) + Ready-Promise -->
+<script defer src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
 <script>
-  window.initSqlJs({ locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${f}` })
-    .then(SQL => { window.SQL = SQL; })
-    .catch(err => console.error('sql.js init fehlgeschlagen', err));
+  window.SQL_READY = window.initSqlJs({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${f}`
+  }).then(SQL => { window.SQL = SQL; });
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@5.1.1/dist/geopackage.min.js"></script>
+
+<!-- GeoPackage API -->
+<script defer src="https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@5.1.1/dist/geopackage.min.js"></script>
 
 <style>
   html,body,#map{height:100%;margin:0}
@@ -84,7 +86,7 @@
   <button id="exportGeoJSON">Export GeoJSON</button>
 </div>
 
-<div class="hint">Klick 1 = unten rechts (Start), Klick 2 = oben rechts (Richtung). Rote Griffe ziehen zum Ausrichten; (beide Griffe nacheinander = verschieben).</div>
+<div class="hint">Klick 1 = unten rechts (Start), Klick 2 = oben rechts (Richtung). Rote Griffe: ausrichten; grüner Griff: komplett verschieben.</div>
 
 <script>
 /* ===== PROJ ===== */
@@ -92,25 +94,34 @@ proj4.defs("EPSG:25832","+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs");
 ol.proj.proj4.register(proj4);
 const PROJ = ol.proj.get('EPSG:25832');
 
+/* ===== Styles (gute Lesbarkeit) ===== */
+const lineHalo = new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,255,255,0.98)', width: 6 }) });
+const lineCore = new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#111', width: 2.2 }) });
+const dashedHalo = new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,255,255,0.95)', width: 5, lineDash:[10,8] })});
+const dashedCore = new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#1f2937', width: 2, lineDash:[10,8] })});
+const pointStyle = new ol.style.Style({ image: new ol.style.Circle({ radius: 4.5, fill: new ol.style.Fill({ color: '#111' }), stroke: new ol.style.Stroke({ color: '#fff', width: 1.2 }) }) });
+
 /* ===== Map & Layers ===== */
 const vectorSource = new ol.source.Vector({wrapX:false});
 const vectorLayer  = new ol.layer.Vector({
   source:vectorSource,
-  style:new ol.style.Style({
-    stroke:new ol.style.Stroke({color:'#111',width:2}),
-    image:new ol.style.Circle({radius:4,fill:new ol.style.Fill({color:'#111'})})
-  })
+  style: feature => {
+    const geom = feature.getGeometry();
+    const styl = feature.get('style');
+    if (geom instanceof ol.geom.LineString) {
+      return styl==='dashed' ? [dashedHalo, dashedCore] : [lineHalo, lineCore];
+    }
+    return pointStyle;
+  }
 });
 const handleSrc = new ol.source.Vector();
 const handleLayer = new ol.layer.Vector({
   source:handleSrc,
-  style: feature=>{
-    const role = feature.get('role')||'p';
-    const clr  = role==='center' ? '#10b981' : '#ef4444';
-    const strok= role==='center' ? '#065f46' : '#991b1b';
-    return new ol.style.Style({
-      image:new ol.style.Circle({radius:6, fill:new ol.style.Fill({color:clr}), stroke:new ol.style.Stroke({color:strok,width:1.6})})
-    });
+  style: f=>{
+    const role=f.get('role')||'p';
+    const clr = role==='center' ? '#10b981' : '#ef4444';
+    const st  = role==='center' ? '#065f46' : '#991b1b';
+    return new ol.style.Style({ image:new ol.style.Circle({radius:6, fill:new ol.style.Fill({color:clr}), stroke:new ol.style.Stroke({color:st,width:1.6})}) });
   }
 });
 const map = new ol.Map({
@@ -120,10 +131,10 @@ const map = new ol.Map({
   controls: ol.control.defaults.defaults()
 });
 
-/* ===== WMTS (LDBV) ===== */
+/* ===== WMTS (LDBV) + WMS-Fallback ===== */
 const CAP_URL='https://geoservices.bayern.de/od/wmts/geobasis/v1/1.0.0/WMTSCapabilities.xml';
 const wmtsParser = new ol.format.WMTSCapabilities();
-let dop20Layer=null, webkarteLayer=null;
+let dop20Layer=null, webkarteLayer=null, dop20Wms=null;
 
 function addWMTSFromCaps(layerId, caps){
   const opt = ol.source.WMTS.optionsFromCapabilities(caps, { layer:layerId, matrixSet:'EPSG:25832', projection:PROJ, crossOrigin:'anonymous' });
@@ -150,39 +161,59 @@ fetch(CAP_URL).then(r=>r.text()).then(txt=>{
   osm.setZIndex(0); map.getLayers().insertAt(0, osm);
 });
 
+// WMS-Fallback (immer bereit, aber unsichtbar)
+dop20Wms = new ol.layer.Tile({
+  visible:false, zIndex:1,
+  source: new ol.source.TileWMS({
+    url: 'https://geoservices.bayern.de/wms/v1/ogc_dop20?',
+    params: { SERVICE:'WMS', VERSION:'1.3.0', REQUEST:'GetMap', LAYERS:'by_dop20c', STYLES:'', FORMAT:'image/jpeg', TILED:true, CRS:'EPSG:25832' },
+    crossOrigin:'anonymous'
+  })
+});
+map.getLayers().insertAt(0, dop20Wms);
+
 document.getElementById('toggleDOP').onclick=()=>{
-  if(!dop20Layer){ alert('Orthofoto noch nicht verfügbar.'); return; }
-  const vis = !dop20Layer.getVisible();
-  dop20Layer.setVisible(vis);
-  document.getElementById('toggleDOP').textContent = vis?'Orthofoto aus':'Orthofoto';
-  if(vis && map.getView().getZoom()<19) map.getView().setZoom(19);
+  const wmtsOk = !!dop20Layer;
+  const current = wmtsOk ? dop20Layer.getVisible() : dop20Wms.getVisible();
+  const next    = !current;
+  if (wmtsOk) dop20Layer.setVisible(next); else dop20Wms.setVisible(next);
+  document.getElementById('toggleDOP').textContent = next ? 'Orthofoto aus' : 'Orthofoto';
+  if(next && map.getView().getZoom()<19) map.getView().setZoom(19);
 };
 
-/* ===== GPS ===== */
+/* ===== GPS (robust) ===== */
 let gpsPointFeature=null, gpsCircleFeature=null;
-document.getElementById('loc').onclick=()=>{
-  if(!navigator.geolocation){ alert('Geolocation nicht verfügbar.'); return; }
-  navigator.geolocation.getCurrentPosition(pos=>{
-    const c = ol.proj.fromLonLat([pos.coords.longitude,pos.coords.latitude], PROJ);
-    const acc = Math.max(pos.coords.accuracy||5,3);
-    map.getView().animate({center:c, zoom: Math.max(map.getView().getZoom(), 19), duration:350});
-    if(!gpsPointFeature){
-      gpsPointFeature = new ol.Feature(new ol.geom.Point(c));
-      gpsPointFeature.setStyle(new ol.style.Style({
-        image:new ol.style.Circle({radius:5, fill:new ol.style.Fill({color:'#2563eb'}), stroke:new ol.style.Stroke({color:'#1e40af',width:1})})
-      }));
-      gpsCircleFeature = new ol.Feature(new ol.geom.Circle(c, acc));
-      gpsCircleFeature.setStyle(new ol.style.Style({
-        stroke:new ol.style.Stroke({color:'#2563eb', width:1, lineDash:[4,4]}),
-        fill:new ol.style.Fill({color:'rgba(59,130,246,0.06)'})
-      }));
-      vectorSource.addFeatures([gpsCircleFeature,gpsPointFeature]);
-    }else{
-      gpsPointFeature.getGeometry().setCoordinates(c);
-      gpsCircleFeature.getGeometry().setCenter(c);
-      gpsCircleFeature.getGeometry().setRadius(acc);
-    }
-  }, ()=>alert('Standort nicht möglich. Bitte HTTPS + Erlaubnis prüfen.'));
+document.getElementById('loc').onclick = () => {
+  if (!navigator.geolocation) { alert('Geolocation nicht verfügbar.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const lon=pos.coords.longitude, lat=pos.coords.latitude;
+      const acc=Math.max(pos.coords.accuracy||5,3);
+      const c = ol.proj.fromLonLat([lon,lat], PROJ);
+      map.getView().animate({center:c, zoom: Math.max(map.getView().getZoom(), 19), duration:350});
+      if(!gpsPointFeature){
+        gpsPointFeature = new ol.Feature(new ol.geom.Point(c));
+        gpsPointFeature.setStyle(new ol.style.Style({
+          image: new ol.style.Circle({ radius:5, fill:new ol.style.Fill({color:'#2563eb'}), stroke:new ol.style.Stroke({color:'#1e40af',width:1}) })
+        }));
+        gpsCircleFeature = new ol.Feature(new ol.geom.Circle(c, acc));
+        gpsCircleFeature.setStyle(new ol.style.Style({
+          stroke:new ol.style.Stroke({color:'#2563eb', width:1, lineDash:[4,4]}),
+          fill:new ol.style.Fill({color:'rgba(59,130,246,0.06)'})
+        }));
+        vectorSource.addFeatures([gpsCircleFeature,gpsPointFeature]);
+      }else{
+        gpsPointFeature.getGeometry().setCoordinates(c);
+        gpsCircleFeature.getGeometry().setCenter(c);
+        gpsCircleFeature.getGeometry().setRadius(acc);
+      }
+    },
+    err => {
+      const msg={1:'Zugriff verweigert – bitte Standortfreigabe erlauben.',2:'Position nicht bestimmbar.',3:'Zeitüberschreitung – bitte erneut versuchen.'}[err.code]||'Unbekannter Geolocation-Fehler.';
+      alert(msg);
+    },
+    { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+  );
 };
 
 /* ===== UI ===== */
@@ -244,9 +275,7 @@ widthInput.addEventListener('change',()=>{ if(p1&&p2) redraw(); });
 /* ===== Zwei Punkte + Drag-Handles ===== */
 let p1=null, p2=null;
 const clickOverlaySrc = new ol.source.Vector();
-const clickOverlay = new ol.layer.Vector({source:clickOverlaySrc, style: new ol.style.Style({
-  image: new ol.style.Circle({radius:5, fill:new ol.style.Fill({color:'#ef4444'})})
-})});
+const clickOverlay = new ol.layer.Vector({source:clickOverlaySrc, style: new ol.style.Style({ image:new ol.style.Circle({radius:5, fill:new ol.style.Fill({color:'#ef4444'})})})});
 map.addLayer(clickOverlay);
 
 map.on('click',evt=>{
@@ -259,7 +288,7 @@ document.getElementById('reset').onclick=()=>{
   lastResult=null; gpsPointFeature=gpsCircleFeature=null;
 };
 
-let h1=null, h2=null, hc=null, translateInteraction=null, lastCenter=null;
+let h1=null,h2=null,hc=null, translateInteraction=null, lastCenter=null;
 function ensureHandles(){
   if(!p1||!p2) return;
   const center=[(p1[0]+p2[0])/2,(p1[1]+p2[1])/2];
@@ -398,8 +427,8 @@ function drawSchusszonen(UL,UR,OL,OR, ux,uy, namePrefix, out){
   const bottomB={x:UR.x+ux*6, y:UR.y+uy*6};
   const topA   ={x:OL.x-ux*6, y:OL.y-uy*6};
   const topB   ={x:OR.x-ux*6, y:OR.y-uy*6};
-  addLine(bottomA,bottomB,`${namePrefix} Schusszone unten (6 m)`,out);
-  addLine(topA,topB,      `${namePrefix} Schusszone oben (6 m)`,out);
+  const l1 = addLine(bottomA,bottomB,`${namePrefix} Schusszone unten (6 m)`,out);
+  const l2 = addLine(topA,topB,      `${namePrefix} Schusszone oben (6 m)`,out);
   return {bottomA,bottomB,topA,topB};
 }
 function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out){
@@ -552,23 +581,23 @@ function redraw(opts={}){
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
   addLine(OL,UL,"Seitenlinie links",out);
-  addPt(UL,"Eckfahne unten links",out); addPt(UR,"Eckfahne unten rechts",out);
-  addPt(OL,"Eckfahne oben links",out);  addPt(OR,"Eckfahne oben rechts",out);
+  addPt(UL,"Ecke unten links",out); addPt(UR,"Ecke unten rechts",out);
+  addPt(OL,"Ecke oben links",out);  addPt(OR,"Ecke oben rechts",out);
 
-  // Mittellinie + Mittelkreis + Schnittpunkte
+  // Mittellinie & Mittelkreis & Schnittpunkte
   const mu=mid(UL,UR), mo=mid(OL,OR);
   const mlGF=mid(UL,OL), mrGF=mid(UR,OR);
   addLine(mlGF,mrGF,"Mittellinie",out);
   const midCenterGF={x:(mlGF.x+mrGF.x)/2, y:(mlGF.y+mrGF.y)/2};
-  addPt(midCenterGF,"Mittellinie Mittelpunkt",out);
+  addPt(midCenterGF,"Mittelpunkt Mittellinie",out);
   const center={x:(mu.x+mo.x)/2,y:(mu.y+mo.y)/2};
   addPoly(circlePts(center,9.15,96),"Mittelkreis",out);
 
   const spR=lineIntersect(UR,OR,mlGF,mrGF), spL=lineIntersect(UL,OL,mlGF,mrGF);
-  if(spR) addPt(spR,"Schnittpunkt Mittellinie & Seitenlinie rechts",out);
-  if(spL) addPt(spL,"Schnittpunkt Mittellinie & Seitenlinie links",out);
+  if(spR) addPt(spR,"Schnittpunkt ML & SR rechts",out);
+  if(spL) addPt(spL,"Schnittpunkt ML & SR links",out);
 
-  // Torbereiche
+  // Torbereiche (5m & 16,5m + 11m Punkt)
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
   drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
 
@@ -579,7 +608,7 @@ function redraw(opts={}){
 }
 
 /* ===== Export ===== */
-// GeoJSON: WGS84 + UTM32
+// GeoJSON
 document.getElementById('exportGeoJSON').onclick=()=>{
   if(!lastResult){ alert('Kein Feld erzeugt.'); return; }
   const base=(fnameInput.value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
@@ -588,12 +617,10 @@ document.getElementById('exportGeoJSON').onclick=()=>{
   const to4326=(x,y)=>ol.proj.transform([x,y], PROJ, 'EPSG:4326');
   const save=(obj,fn)=>{ const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/geo+json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fn; a.click(); URL.revokeObjectURL(a.href); };
 
-  // UTM32
   const pts_utm=makeFC('EPSG:25832'), lines_utm=makeFC('EPSG:25832');
   lastResult.points.forEach(p=>pts_utm.features.push({type:'Feature',properties:{name:p.name},geometry:{type:'Point',coordinates:[p.x,p.y]}}));
   lastResult.lines.forEach(l=>{ const coords=l.points?l.points.map(q=>[q.x,q.y]):[[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]]; lines_utm.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}}); });
 
-  // WGS84
   const pts_wgs=makeFC('EPSG:4326'), lines_wgs=makeFC('EPSG:4326');
   lastResult.points.forEach(p=>{ const [lon,lat]=to4326(p.x,p.y); pts_wgs.features.push({type:'Feature',properties:{name:p.name},geometry:{type:'Point',coordinates:[lon,lat]}}); });
   lastResult.lines.forEach(l=>{ const src=l.points?l.points.map(q=>[q.x,q.y]):[[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]]; const coords=src.map(([x,y])=>to4326(x,y)); lines_wgs.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}}); });
@@ -604,15 +631,21 @@ document.getElementById('exportGeoJSON').onclick=()=>{
   save(lines_utm,`${base}_utm32_lines_${ts}.geojson`);
 };
 
-// GeoPackage (EPSG:25832) – zwei Tabellen: punkte, linien
-document.getElementById('exportGPKG').onclick=async()=>{
-  if(!lastResult){ alert('Kein Feld erzeugt.'); return; }
-  if(!window.GeoPackage || !window.SQL){ alert('GPKG-Module noch nicht geladen. Bitte kurz warten und erneut versuchen.'); return; }
-  try{
-    // Schreibbares GPKG
-    const gp = await GeoPackage.GeoPackageAPI.createWriteableBlob('export.gpkg');
+// GeoPackage (EPSG:25832) – wartet auf SQL_READY
+document.getElementById('exportGPKG').onclick = async () => {
+  if (!lastResult) { alert('Kein Feld erzeugt.'); return; }
+  try {
+    if (window.SQL_READY) await window.SQL_READY;
+    if (!window.SQL) throw new Error('sql.js nicht verfügbar');
+    // GeoPackage-API sollte nach defer da sein, sonst kurz warten
+    if (!window.GeoPackage){
+      const t0=performance.now(); while(!window.GeoPackage && performance.now()-t0<3000){ await new Promise(r=>setTimeout(r,100)); }
+    }
+    if (!window.GeoPackage) throw new Error('GeoPackage-API nicht verfügbar');
 
-    // EPSG:25832 registrieren (falls noch nicht vorhanden)
+    const gp = await GeoPackage.GeoPackageAPI.create();
+
+    // EPSG:25832 SRS anlegen (idempotent)
     const srsDao = gp.getSpatialReferenceSystemDao();
     try{
       await srsDao.create({
@@ -623,32 +656,24 @@ document.getElementById('exportGPKG').onclick=async()=>{
         definition:'PROJCS["ETRS89 / UTM zone 32N",GEOGCS["ETRS89",DATUM["ETRS_1989",SPHEROID["GRS 1980",6378137,298.257222101,AUTHORITY["EPSG","7019"]],AUTHORITY["EPSG","6258"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",9],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","25832"]]',
         description:'EPSG:25832'
       });
-    }catch(e){ /* existiert evtl. schon */ }
-
-    // Tabellen
+    }catch(e){/* existiert evtl. bereits */}
     await gp.createFeatureTable('punkte',{geometryColumn:'geom',geometryType:'POINT',srsId:25832,properties:{name:'TEXT'}});
     await gp.createFeatureTable('linien',{geometryColumn:'geom',geometryType:'LINESTRING',srsId:25832,properties:{name:'TEXT'}});
 
-    // Features einfügen
-    for(const p of lastResult.points){
+    for (const p of lastResult.points){
       await gp.insertFeature('punkte',{geom:{type:'Point',coordinates:[p.x,p.y]},properties:{name:p.name}});
     }
-    for(const l of lastResult.lines){
+    for (const l of lastResult.lines){
       const coords = l.points ? l.points.map(q=>[q.x,q.y]) : [[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
       await gp.insertFeature('linien',{geom:{type:'LineString',coordinates:coords},properties:{name:l.name}});
     }
 
-    // Download
-    const blob=await gp.export();
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
+    const blob = await gp.export();
     const base=(fnameInput.value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
-    a.download=`${base}.gpkg`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }catch(e){
-    console.error(e);
-    alert('GPKG-Export fehlgeschlagen (siehe Konsole).');
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${base}.gpkg`; a.click(); URL.revokeObjectURL(a.href);
+  } catch (e) {
+    console.error('GPKG-Export Fehler:', e);
+    alert(`GPKG-Export fehlgeschlagen: ${e.message || e}`);
   }
 };
 
