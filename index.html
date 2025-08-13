@@ -3,24 +3,24 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Franks Fußballfeld-Generator</title>
+<title>Franks Fußballfeld-Generator (stabil)</title>
 
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
 
-<!-- OpenLayers & proj4 -->
-<script defer src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+<!-- Libs: Reihenfolge & Verfügbarkeit garantiert -->
+<script src="https://cdn.jsdelivr.net/npm/proj4@2.10.0/dist/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
 
 <!-- sql.js (WASM) + Ready-Promise -->
-<script defer src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/sql-wasm.js"></script>
 <script>
   window.SQL_READY = window.initSqlJs({
     locateFile: f => `https://cdn.jsdelivr.net/npm/sql.js@1.8.0/dist/${f}`
-  }).then(SQL => { window.SQL = SQL; });
+  }).then(SQL => { window.SQL = SQL; }).catch(e=>console.error('sql.js init', e));
 </script>
 
 <!-- GeoPackage API -->
-<script defer src="https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@5.1.1/dist/geopackage.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ngageoint/geopackage@5.1.1/dist/geopackage.min.js"></script>
 
 <style>
   html,body,#map{height:100%;margin:0}
@@ -54,6 +54,7 @@
 
 <div class="ctrl">
   <button id="loc" class="primary">Standort</button>
+  <span id="locStatus" class="muted"></span>
   <button id="toggleDOP">Orthofoto</button>
 
   <select id="mode" title="Modus">
@@ -64,16 +65,16 @@
 
   <select id="kfScenario" title="Kleinfeld-Szenario" disabled>
     <option value="">Szenario wählen…</option>
-    <option value="g2v2_16x20">G-Jugend 2v2 – 16×20 m (Mittellinie, 4 Minitore)</option>
-    <option value="g3v3_25x20">G/F 3v3 – 25×20 m (6 m-Zonen, 4 Minitore)</option>
-    <option value="f5v5_40x25_mini">F/E 5v5 – 40×25 m (4 Minitore, 6 m-Zonen)</option>
-    <option value="f5v5_40x25_kf">F/E 5v5 – 40×25 m (2 Kleinfeldtore, Mittellinie)</option>
-    <option value="e7v7_55x35">E 7v7 – 55×35 m (Mittellinie & Strafraum)</option>
+    <option value="g2v2_16x20">G 2v2 – 16×20 (Mittellinie, 4 Minitore)</option>
+    <option value="g3v3_25x20">G/F 3v3 – 25×20 (6 m-Zonen, 4 Minitore)</option>
+    <option value="f5v5_40x25_mini">F/E 5v5 – 40×25 (4 Minitore, 6 m-Zonen)</option>
+    <option value="f5v5_40x25_kf">F/E 5v5 – 40×25 (2 Kleinfeldtore, Mittellinie)</option>
+    <option value="e7v7_55x35">E 7v7 – 55×35 (Mittellinie & Strafraum)</option>
   </select>
   <span id="kfInfo" class="scenario-note" style="display:none;"></span>
 
-  <label>L (m): <input id="length" type="number" step="1" min="90" max="120" placeholder="90–120" value="105"></label>
-  <label>B (m): <input id="width"  type="number" step="0.1" min="45" max="90"  placeholder="45–90" value="65"><span id="presetNote" class="disabled-note" style="display:none;">(vorgegeben)</span></label>
+  <label>L (m): <input id="length" type="number" step="1" min="90" max="120" value="105"></label>
+  <label>B (m): <input id="width"  type="number" step="0.1" min="45" max="90"  value="65"><span id="presetNote" class="disabled-note" style="display:none;">(vorgegeben)</span></label>
 
   <label id="dockWrap" style="display:none;"><input type="checkbox" id="dockOption"> vGF andocken</label>
   <span id="dockLen" class="muted" style="display:none;"></span>
@@ -86,7 +87,7 @@
   <button id="exportGeoJSON">Export GeoJSON</button>
 </div>
 
-<div class="hint">Klick 1 = unten rechts (Start), Klick 2 = oben rechts (Richtung). Rote Griffe: ausrichten; grüner Griff: komplett verschieben.</div>
+<div class="hint">Klick 1 = unten rechts (Start), Klick 2 = oben rechts (Richtung). Grüne Mitte verschiebt alles, rote Griffe drehen/versetzen.</div>
 
 <script>
 /* ===== PROJ ===== */
@@ -94,7 +95,7 @@ proj4.defs("EPSG:25832","+proj=utm +zone=32 +datum=WGS84 +units=m +no_defs");
 ol.proj.proj4.register(proj4);
 const PROJ = ol.proj.get('EPSG:25832');
 
-/* ===== Styles (gute Lesbarkeit) ===== */
+/* ===== Styles (sehr gut lesbar, auch auf Orthofoto) ===== */
 const lineHalo = new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,255,255,0.98)', width: 6 }) });
 const lineCore = new ol.style.Style({ stroke: new ol.style.Stroke({ color: '#111', width: 2.2 }) });
 const dashedHalo = new ol.style.Style({ stroke: new ol.style.Stroke({ color: 'rgba(255,255,255,0.95)', width: 5, lineDash:[10,8] })});
@@ -105,12 +106,9 @@ const pointStyle = new ol.style.Style({ image: new ol.style.Circle({ radius: 4.5
 const vectorSource = new ol.source.Vector({wrapX:false});
 const vectorLayer  = new ol.layer.Vector({
   source:vectorSource,
-  style: feature => {
-    const geom = feature.getGeometry();
-    const styl = feature.get('style');
-    if (geom instanceof ol.geom.LineString) {
-      return styl==='dashed' ? [dashedHalo, dashedCore] : [lineHalo, lineCore];
-    }
+  style: f=>{
+    const g=f.getGeometry(), styl=f.get('style');
+    if (g instanceof ol.geom.LineString) return styl==='dashed'?[dashedHalo,dashedCore]:[lineHalo,lineCore];
     return pointStyle;
   }
 });
@@ -124,6 +122,7 @@ const handleLayer = new ol.layer.Vector({
     return new ol.style.Style({ image:new ol.style.Circle({radius:6, fill:new ol.style.Fill({color:clr}), stroke:new ol.style.Stroke({color:st,width:1.6})}) });
   }
 });
+
 const map = new ol.Map({
   target:'map',
   layers:[vectorLayer, handleLayer],
@@ -131,7 +130,7 @@ const map = new ol.Map({
   controls: ol.control.defaults.defaults()
 });
 
-/* ===== WMTS (LDBV) + WMS-Fallback ===== */
+/* ===== WMTS (LDBV) + sicherer WMS-Fallback für DOP20 ===== */
 const CAP_URL='https://geoservices.bayern.de/od/wmts/geobasis/v1/1.0.0/WMTSCapabilities.xml';
 const wmtsParser = new ol.format.WMTSCapabilities();
 let dop20Layer=null, webkarteLayer=null, dop20Wms=null;
@@ -143,25 +142,23 @@ function addWMTSFromCaps(layerId, caps){
 fetch(CAP_URL).then(r=>r.text()).then(txt=>{
   const caps = wmtsParser.read(txt);
   const layers = caps.Contents.Layer || [];
-  const getId = (preferRegex, fallbacks=[])=>{
-    const byRe = layers.find(l=> preferRegex.test(l.Identifier) );
-    if(byRe) return byRe.Identifier;
-    for(const id of fallbacks){ const hit=layers.find(l=>l.Identifier===id); if(hit) return hit.Identifier; }
+  const pick=(rx,fallback=[])=>{
+    const m=layers.find(l=>rx.test(l.Identifier)); if(m) return m.Identifier;
+    for(const id of fallback){ const h=layers.find(l=>l.Identifier===id); if(h) return h.Identifier; }
     return layers[0]?.Identifier;
   };
-  const idWeb = getId(/webatlas|webkarte/i, ['WEBATLAS','WebAtlasDE','by_webkarte']);
-  const idDOP = getId(/dop20/i, ['DOP20_RGB','DOP20','by_dop20c']);
+  const idWeb = pick(/webatlas|webkarte/i,['WEBATLAS','WebAtlasDE','by_webkarte']);
+  const idDOP = pick(/dop20/i,['DOP20_RGB','DOP20','by_dop20c']);
 
   if(idWeb){ webkarteLayer = addWMTSFromCaps(idWeb, caps); webkarteLayer.setZIndex(0); webkarteLayer.setVisible(true); map.getLayers().insertAt(0, webkarteLayer); }
   if(idDOP){ dop20Layer    = addWMTSFromCaps(idDOP, caps); dop20Layer.setZIndex(1); dop20Layer.setOpacity(0.96); dop20Layer.setVisible(false); map.getLayers().insertAt(0, dop20Layer); }
 }).catch(err=>{
-  console.warn('Capabilities fehlgeschlagen',err);
-  alert('WMTS konnte nicht geladen werden. OSM-Fallback wird genutzt.');
+  console.warn('WMTS Capabilities fehlgeschlagen',err);
   const osm = new ol.layer.Tile({source:new ol.source.OSM()});
   osm.setZIndex(0); map.getLayers().insertAt(0, osm);
 });
 
-// WMS-Fallback (immer bereit, aber unsichtbar)
+// WMS-Fallback: bleibt unsichtbar, bis per Button genutzt
 dop20Wms = new ol.layer.Tile({
   visible:false, zIndex:1,
   source: new ol.source.TileWMS({
@@ -174,45 +171,64 @@ map.getLayers().insertAt(0, dop20Wms);
 
 document.getElementById('toggleDOP').onclick=()=>{
   const wmtsOk = !!dop20Layer;
-  const current = wmtsOk ? dop20Layer.getVisible() : dop20Wms.getVisible();
-  const next    = !current;
+  const cur = wmtsOk ? dop20Layer.getVisible() : dop20Wms.getVisible();
+  const next=!cur;
   if (wmtsOk) dop20Layer.setVisible(next); else dop20Wms.setVisible(next);
   document.getElementById('toggleDOP').textContent = next ? 'Orthofoto aus' : 'Orthofoto';
-  if(next && map.getView().getZoom()<19) map.getView().setZoom(19);
+  if (next && map.getView().getZoom()<19) map.getView().setZoom(19);
 };
 
-/* ===== GPS (robust) ===== */
+/* ===== Standort robust (Status + Fallback auf watchPosition) ===== */
+const locStatus = document.getElementById('locStatus');
+const setLocStatus = t => locStatus.textContent = t||'';
 let gpsPointFeature=null, gpsCircleFeature=null;
-document.getElementById('loc').onclick = () => {
-  if (!navigator.geolocation) { alert('Geolocation nicht verfügbar.'); return; }
+
+function showFix(lon,lat,acc){
+  const c=ol.proj.fromLonLat([lon,lat], PROJ);
+  map.getView().animate({center:c, zoom: Math.max(map.getView().getZoom(), 19), duration:350});
+  if(!gpsPointFeature){
+    gpsPointFeature=new ol.Feature(new ol.geom.Point(c));
+    gpsPointFeature.setStyle(new ol.style.Style({ image:new ol.style.Circle({radius:5,fill:new ol.style.Fill({color:'#2563eb'}),stroke:new ol.style.Stroke({color:'#1e40af',width:1})}) }));
+    gpsCircleFeature=new ol.Feature(new ol.geom.Circle(c, acc));
+    gpsCircleFeature.setStyle(new ol.style.Style({ stroke:new ol.style.Stroke({color:'#2563eb',width:1,lineDash:[4,4]}), fill:new ol.style.Fill({color:'rgba(59,130,246,0.06)'}) }));
+    vectorSource.addFeatures([gpsCircleFeature,gpsPointFeature]);
+  }else{
+    gpsPointFeature.getGeometry().setCoordinates(c);
+    gpsCircleFeature.getGeometry().setCenter(c);
+    gpsCircleFeature.getGeometry().setRadius(acc);
+  }
+}
+function geoErrorMessage(err){
+  return ({1:'Zugriff verweigert – bitte Standortfreigabe erlauben.',2:'Position nicht bestimmbar.',3:'Zeitüberschreitung – bitte erneut versuchen.'}[err.code] || ('Geolocation-Fehler: '+(err.message||err)));
+}
+document.getElementById('loc').onclick=()=>{
+  if(!navigator.geolocation){ alert('Geolocation nicht verfügbar.'); return; }
+  setLocStatus('Suche GPS…');
+  const opts={enableHighAccuracy:true,timeout:15000,maximumAge:0};
+  let got=false, watchId=null;
+  const cleanup=()=>{ if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; } };
+  const fallbackTimer=setTimeout(()=>{
+    if(got) return;
+    setLocStatus('Suche (Live)…');
+    watchId=navigator.geolocation.watchPosition(
+      pos=>{ if(got) return; got=true; cleanup(); clearTimeout(fallbackTimer); setLocStatus('OK'); showFix(pos.coords.longitude,pos.coords.latitude, Math.max(pos.coords.accuracy||5,3)); },
+      err=>{ cleanup(); clearTimeout(fallbackTimer); setLocStatus('Fehler'); alert(geoErrorMessage(err)); },
+      opts
+    );
+  },6000);
   navigator.geolocation.getCurrentPosition(
-    pos => {
-      const lon=pos.coords.longitude, lat=pos.coords.latitude;
-      const acc=Math.max(pos.coords.accuracy||5,3);
-      const c = ol.proj.fromLonLat([lon,lat], PROJ);
-      map.getView().animate({center:c, zoom: Math.max(map.getView().getZoom(), 19), duration:350});
-      if(!gpsPointFeature){
-        gpsPointFeature = new ol.Feature(new ol.geom.Point(c));
-        gpsPointFeature.setStyle(new ol.style.Style({
-          image: new ol.style.Circle({ radius:5, fill:new ol.style.Fill({color:'#2563eb'}), stroke:new ol.style.Stroke({color:'#1e40af',width:1}) })
-        }));
-        gpsCircleFeature = new ol.Feature(new ol.geom.Circle(c, acc));
-        gpsCircleFeature.setStyle(new ol.style.Style({
-          stroke:new ol.style.Stroke({color:'#2563eb', width:1, lineDash:[4,4]}),
-          fill:new ol.style.Fill({color:'rgba(59,130,246,0.06)'})
-        }));
-        vectorSource.addFeatures([gpsCircleFeature,gpsPointFeature]);
-      }else{
-        gpsPointFeature.getGeometry().setCoordinates(c);
-        gpsCircleFeature.getGeometry().setCenter(c);
-        gpsCircleFeature.getGeometry().setRadius(acc);
-      }
+    pos=>{ if(got) return; got=true; cleanup(); clearTimeout(fallbackTimer); setLocStatus('OK'); showFix(pos.coords.longitude,pos.coords.latitude, Math.max(pos.coords.accuracy||5,3)); },
+    err=>{ if(got) return; cleanup(); clearTimeout(fallbackTimer);
+      if(err.code===3){ // Timeout -> sofort watch
+        setLocStatus('Wechsle zu Live…');
+        watchId=navigator.geolocation.watchPosition(
+          pos=>{ if(got) return; got=true; cleanup(); setLocStatus('OK'); showFix(pos.coords.longitude,pos.coords.latitude, Math.max(pos.coords.accuracy||5,3)); },
+          e=>{ cleanup(); setLocStatus('Fehler'); alert(geoErrorMessage(e)); },
+          opts
+        );
+      }else{ setLocStatus('Fehler'); alert(geoErrorMessage(err)); }
     },
-    err => {
-      const msg={1:'Zugriff verweigert – bitte Standortfreigabe erlauben.',2:'Position nicht bestimmbar.',3:'Zeitüberschreitung – bitte erneut versuchen.'}[err.code]||'Unbekannter Geolocation-Fehler.';
-      alert(msg);
-    },
-    { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+    opts
   );
 };
 
@@ -248,8 +264,8 @@ function updateDockAvailability(){
   dockLen.style.display=isV?'inline':'none';
   dockWarn.style.display='none';
   if(!isV) return;
-  const L = Number(lengthInput.value)||105;
-  const std = L - 33, dc = L - 16.5;
+  const L=Number(lengthInput.value)||105;
+  const std=L-33, dc=L-16.5;
   dockLen.textContent=`vGF Länge: Standard ${Math.round(std)} m | Andocken ${dc.toFixed(1)} m`;
   if(L<103){
     dockWarn.style.display='inline';
@@ -272,7 +288,7 @@ kfScenario.addEventListener('change',()=>{ updateScenarioInfo(); if(p1&&p2) redr
 lengthInput.addEventListener('change',()=>{ updateDockAvailability(); if(p1&&p2) redraw(); });
 widthInput.addEventListener('change',()=>{ if(p1&&p2) redraw(); });
 
-/* ===== Zwei Punkte + Drag-Handles ===== */
+/* ===== Zwei Klicks + Drag-Handles ===== */
 let p1=null, p2=null;
 const clickOverlaySrc = new ol.source.Vector();
 const clickOverlay = new ol.layer.Vector({source:clickOverlaySrc, style: new ol.style.Style({ image:new ol.style.Circle({radius:5, fill:new ol.style.Fill({color:'#ef4444'})})})});
@@ -285,7 +301,7 @@ map.on('click',evt=>{
 document.getElementById('reset').onclick=()=>{
   p1=p2=null; vectorSource.clear(); clickOverlaySrc.clear();
   handleSrc.clear(); if(translateInteraction) map.removeInteraction(translateInteraction);
-  lastResult=null; gpsPointFeature=gpsCircleFeature=null;
+  lastResult=null; gpsPointFeature=gpsCircleFeature=null; setLocStatus('');
 };
 
 let h1=null,h2=null,hc=null, translateInteraction=null, lastCenter=null;
@@ -321,10 +337,10 @@ function ensureHandles(){
   }
 }
 
-/* ===== Helpers ===== */
+/* ===== Geometrie-Helpers ===== */
 const norm=(dx,dy)=>{const L=Math.hypot(dx,dy)||1;return{ux:dx/L,uy:dy/L,L}};
 const mid =(A,B)=>({x:(A.x+B.x)/2,y:(A.y+B.y)/2});
-function addLine(a,b,name,out){ const f=new ol.Feature(new ol.geom.LineString([[a.x,a.y],[b.x,b.y]])); f.set('name',name); vectorSource.addFeature(f); out.lines.push({name,p1:a,p2:b}); }
+function addLine(a,b,name,out,style){ const f=new ol.Feature(new ol.geom.LineString([[a.x,a.y],[b.x,b.y]])); f.set('name',name); if(style) f.set('style',style); vectorSource.addFeature(f); out.lines.push({name,p1:a,p2:b,style}); }
 function addPt(p,name,out){ const f=new ol.Feature(new ol.geom.Point([p.x,p.y])); f.set('name',name); vectorSource.addFeature(f); out.points.push({name,x:p.x,y:p.y}); }
 function addPoly(points,name,out){ const coords=points.map(p=>[p.x,p.y]); const f=new ol.Feature(new ol.geom.LineString(coords)); f.set('name',name); vectorSource.addFeature(f); out.lines.push({name,points}); }
 function circlePts(c,r,seg=96){ const pts=[]; for(let i=0;i<=seg;i++){ const a=2*Math.PI*i/seg; pts.push({x:c.x+r*Math.cos(a),y:c.y+r*Math.sin(a)});} return pts; }
@@ -347,6 +363,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(tor_l,`Torpfosten ${prefix} links`,out);
   addLine(tor_r,tor_l,`Torlinie ${prefix}`,out);
 
+  // 5m
   const f5r={x:tor_r.x+nx*5.5,y:tor_r.y+ny*5.5};
   const f5l={x:tor_l.x-nx*5.5,y:tor_l.y-ny*5.5};
   addPt(f5r,`5m Fusspunkt ${prefix} rechts`,out);
@@ -359,6 +376,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addPt(e5r,`5m Eckpunkt ${prefix} rechts`,out);
   addPt(e5l,`5m Eckpunkt ${prefix} links`,out);
 
+  // 16,5m
   const f16r={x:tor_r.x+nx*16.5,y:tor_r.y+ny*16.5};
   const f16l={x:tor_l.x-nx*16.5,y:tor_l.y-ny*16.5};
   addPt(f16r,`16,5m Fusspunkt ${prefix} rechts`,out);
@@ -371,6 +389,7 @@ function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   addLine(f16l,e16l,`16,5m Linie ${prefix} links`,out);
   addLine(e16r,e16l,`16,5m Parallel ${prefix}`,out);
 
+  // 11m-Punkt
   const elfer={x:mitte.x+ux*11,y:mitte.y+uy*11};
   addPt(elfer,`Elfmeterpunkt ${prefix}`,out);
 }
@@ -427,10 +446,12 @@ function drawSchusszonen(UL,UR,OL,OR, ux,uy, namePrefix, out){
   const bottomB={x:UR.x+ux*6, y:UR.y+uy*6};
   const topA   ={x:OL.x-ux*6, y:OL.y-uy*6};
   const topB   ={x:OR.x-ux*6, y:OR.y-uy*6};
-  const l1 = addLine(bottomA,bottomB,`${namePrefix} Schusszone unten (6 m)`,out);
-  const l2 = addLine(topA,topB,      `${namePrefix} Schusszone oben (6 m)`,out);
+  addLine(bottomA,bottomB,`${namePrefix} Schusszone unten (6 m)`,out,'dashed');
+  addLine(topA,topB,      `${namePrefix} Schusszone oben (6 m)`,out,'dashed');
   return {bottomA,bottomB,topA,topB};
 }
+
+/* verkleinertes Großfeld (Standard + Andocken) */
 function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out){
   let bL,bR,tL,tR;
   if(dock){ bL={x:UL.x,y:UL.y}; bR={x:UR.x,y:UR.y};
@@ -498,24 +519,26 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out){
   addLine(midLeft,midRight,"(vGF) Mittellinie",out);
   const kickoff={x:(midLeft.x+midRight.x)/2,y:(midLeft.y+midRight.y)/2};
   addPt(kickoff,"(vGF) Anstoßpunkt",out);
-  addPt(midLeft,"(vGF) Schnittpunkt Mittellinie & Seitenlinie links",out);
-  addPt(midRight,"(vGF) Schnittpunkt Mittellinie & Seitenlinie rechts",out);
+  addPt(midLeft,"(vGF) Schnittpunkt ML & SL links",out);
+  addPt(midRight,"(vGF) Schnittpunkt ML & SL rechts",out);
 
   const penB={x:mB.x+ux*9,y:mB.y+uy*9};
   const penT={x:mT.x-ux*9,y:mT.y-uy*9};
   addPt(penB,"(vGF) Strafstoßpunkt unten (9 m)",out);
   addPt(penT,"(vGF) Strafstoßpunkt oben (9 m)",out);
 }
+
+/* Kleinfeld separat, inkl. Schnittpunkten (ML/SL und 6m-Zonen/SL) */
 function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
   const s=kfScenario.value;
   addLine(UL,UR,"(KF) Grundlinie unten",out);
   addLine(UR,OR,"(KF) Seitenlinie rechts",out);
   addLine(OR,OL,"(KF) Grundlinie oben",out);
   addLine(OL,UL,"(KF) Seitenlinie links",out);
-  addPt(UL,"(KF) Eckpunkt unten links",out);
-  addPt(UR,"(KF) Eckpunkt unten rechts",out);
-  addPt(OL,"(KF) Eckpunkt oben links",out);
-  addPt(OR,"(KF) Eckpunkt oben rechts",out);
+  addPt(UL,"(KF) Ecke unten links",out);
+  addPt(UR,"(KF) Ecke unten rechts",out);
+  addPt(OL,"(KF) Ecke oben links",out);
+  addPt(OR,"(KF) Ecke oben rechts",out);
 
   const sideRight={A:UR,B:OR}, sideLeft={A:UL,B:OL};
   const ml=mid(UL,OL), mr=mid(UR,OR);
@@ -526,8 +549,8 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
     addPt(midCenter,"(KF) Mittellinie Mittelpunkt",out);
     const spR=lineIntersect(UR,OR,ml,mr);
     const spL=lineIntersect(UL,OL,ml,mr);
-    if(spR) addPt(spR,"(KF) Schnittpunkt Mittellinie & Seitenlinie rechts",out);
-    if(spL) addPt(spL,"(KF) Schnittpunkt Mittellinie & Seitenlinie links",out);
+    if(spR) addPt(spR,"(KF) Schnittpunkt ML & SL rechts",out);
+    if(spL) addPt(spL,"(KF) Schnittpunkt ML & SL links",out);
   }
   const needZones=(s==='g3v3_25x20'||s==='f3v3_25x20'||s==='e5v5_40x25_mini'||s==='f5v5_40x25_mini');
   if(needZones){
@@ -536,10 +559,10 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
     const izL=lineIntersect(sideLeft.A, sideLeft.B ,z.bottomA,z.bottomB);
     const ozR=lineIntersect(sideRight.A,sideRight.B,z.topA   ,z.topB   );
     const ozL=lineIntersect(sideLeft.A ,sideLeft.B ,z.topA   ,z.topB   );
-    if(izR) addPt(izR,"(KF) Schnittpunkt rechts & Schusszone unten",out);
-    if(izL) addPt(izL,"(KF) Schnittpunkt links  & Schusszone unten",out);
-    if(ozR) addPt(ozR,"(KF) Schnittpunkt rechts & Schusszone oben",out);
-    if(ozL) addPt(ozL,"(KF) Schnittpunkt links  & Schusszone oben",out);
+    if(izR) addPt(izR,"(KF) Schnittpunkt rechts & 6m unten",out);
+    if(izL) addPt(izL,"(KF) Schnittpunkt links  & 6m unten",out);
+    if(ozR) addPt(ozR,"(KF) Schnittpunkt rechts & 6m oben",out);
+    if(ozL) addPt(ozL,"(KF) Schnittpunkt links  & 6m oben",out);
   }
   if(s==='g2v2_16x20'||s==='g3v3_25x20'||s==='f3v3_25x20'||s==='e5v5_40x25_mini'||s==='f5v5_40x25_mini'){
     drawMiniGoalsOnEnd(UL,UR,"(KF) unten",out);
@@ -554,10 +577,11 @@ function drawKleinfeldSeparate(UR,OR,UL,OL, ux,uy,nx,ny,out){
   }
 }
 
-/* ===== Zeichnen ===== */
+/* ===== Zeichnen (alle Modi) ===== */
 let lastResult=null;
 function redraw(opts={}){
   if(!p1||!p2) return;
+  // nur „benannte“ Features (unsere) entfernen
   vectorSource.getFeatures().forEach(f=>{ if(f.get('name')) vectorSource.removeFeature(f); });
 
   const P1={x:p1[0],y:p1[1]}, P2={x:p2[0],y:p2[1]};
@@ -567,37 +591,41 @@ function redraw(opts={}){
   if(mode==='kleinfeld'){ const d=getScenario(); if(!d){ alert('Bitte Szenario wählen.'); return; } len=d.L; W=d.W; }
   else{
     const Lval=parseInt(lengthInput.value,10), Wval=Number(widthInput.value.replace(',','.'));
-    if(!(Lval>=90&&Lval<=120)) return; if(!(Wval>=45&&Wval<=90)) return;
+    if(!(Lval>=90&&Lval<=120)){ alert('Großfeld-Länge 90–120 m'); return; }
+    if(!(Wval>=45&&Wval<=90)){ alert('Großfeld-Breite 45–90 m'); return; }
     len=Lval; W=Wval;
   }
 
+  // Rechte Längsseite: UR = Klick1, OR = Klick2
   const UR={x:P1.x,y:P1.y}, OR={x:P1.x+ux*len,y:P1.y+uy*len}, OL={x:OR.x+nx*W,y:OR.y+ny*W}, UL={x:UR.x+nx*W,y:UR.y+ny*W};
   const out={points:[],lines:[]};
 
   if(mode==='kleinfeld'){ drawKleinfeldSeparate(UR,OR,UL,OL,ux,uy,nx,ny,out); lastResult=out; ensureHandles(); return; }
 
-  // Außenlinien + Ecken
+  // Außenlinien & Ecken
   addLine(UL,UR,"Grundlinie unten",out);
   addLine(UR,OR,"Seitenlinie rechts",out);
   addLine(OR,OL,"Grundlinie oben",out);
   addLine(OL,UL,"Seitenlinie links",out);
-  addPt(UL,"Ecke unten links",out); addPt(UR,"Ecke unten rechts",out);
-  addPt(OL,"Ecke oben links",out);  addPt(OR,"Ecke oben rechts",out);
+  addPt(UL,"Eckfahne unten links",out);
+  addPt(UR,"Eckfahne unten rechts",out);
+  addPt(OL,"Eckfahne oben links",out);
+  addPt(OR,"Eckfahne oben rechts",out);
 
   // Mittellinie & Mittelkreis & Schnittpunkte
   const mu=mid(UL,UR), mo=mid(OL,OR);
   const mlGF=mid(UL,OL), mrGF=mid(UR,OR);
   addLine(mlGF,mrGF,"Mittellinie",out);
   const midCenterGF={x:(mlGF.x+mrGF.x)/2, y:(mlGF.y+mrGF.y)/2};
-  addPt(midCenterGF,"Mittelpunkt Mittellinie",out);
+  addPt(midCenterGF,"Mittellinie Mittelpunkt",out);
   const center={x:(mu.x+mo.x)/2,y:(mu.y+mo.y)/2};
   addPoly(circlePts(center,9.15,96),"Mittelkreis",out);
 
   const spR=lineIntersect(UR,OR,mlGF,mrGF), spL=lineIntersect(UL,OL,mlGF,mrGF);
-  if(spR) addPt(spR,"Schnittpunkt ML & SR rechts",out);
-  if(spL) addPt(spL,"Schnittpunkt ML & SR links",out);
+  if(spR) addPt(spR,"Schnittpunkt ML & SL rechts",out);
+  if(spL) addPt(spL,"Schnittpunkt ML & SL links",out);
 
-  // Torbereiche (5m & 16,5m + 11m Punkt)
+  // Torbereiche (5 m & 16,5 m & Elfmeter)
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
   drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
 
@@ -608,7 +636,7 @@ function redraw(opts={}){
 }
 
 /* ===== Export ===== */
-// GeoJSON
+// GeoJSON (WGS84 + UTM32)
 document.getElementById('exportGeoJSON').onclick=()=>{
   if(!lastResult){ alert('Kein Feld erzeugt.'); return; }
   const base=(fnameInput.value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
@@ -619,11 +647,18 @@ document.getElementById('exportGeoJSON').onclick=()=>{
 
   const pts_utm=makeFC('EPSG:25832'), lines_utm=makeFC('EPSG:25832');
   lastResult.points.forEach(p=>pts_utm.features.push({type:'Feature',properties:{name:p.name},geometry:{type:'Point',coordinates:[p.x,p.y]}}));
-  lastResult.lines.forEach(l=>{ const coords=l.points?l.points.map(q=>[q.x,q.y]):[[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]]; lines_utm.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}}); });
+  lastResult.lines.forEach(l=>{
+    const coords=l.points?l.points.map(q=>[q.x,q.y]):[[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
+    lines_utm.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}});
+  });
 
   const pts_wgs=makeFC('EPSG:4326'), lines_wgs=makeFC('EPSG:4326');
   lastResult.points.forEach(p=>{ const [lon,lat]=to4326(p.x,p.y); pts_wgs.features.push({type:'Feature',properties:{name:p.name},geometry:{type:'Point',coordinates:[lon,lat]}}); });
-  lastResult.lines.forEach(l=>{ const src=l.points?l.points.map(q=>[q.x,q.y]):[[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]]; const coords=src.map(([x,y])=>to4326(x,y)); lines_wgs.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}}); });
+  lastResult.lines.forEach(l=>{
+    const src=l.points?l.points.map(q=>[q.x,q.y]):[[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
+    const coords=src.map(([x,y])=>to4326(x,y));
+    lines_wgs.features.push({type:'Feature',properties:{name:l.name},geometry:{type:'LineString',coordinates:coords}});
+  });
 
   save(pts_wgs,  `${base}_wgs84_points_${ts}.geojson`);
   save(lines_wgs,`${base}_wgs84_lines_${ts}.geojson`);
@@ -631,13 +666,12 @@ document.getElementById('exportGeoJSON').onclick=()=>{
   save(lines_utm,`${base}_utm32_lines_${ts}.geojson`);
 };
 
-// GeoPackage (EPSG:25832) – wartet auf SQL_READY
-document.getElementById('exportGPKG').onclick = async () => {
-  if (!lastResult) { alert('Kein Feld erzeugt.'); return; }
-  try {
+// GeoPackage (EPSG:25832) – robust (wartet auf Module)
+document.getElementById('exportGPKG').onclick=async()=>{
+  if(!lastResult){ alert('Kein Feld erzeugt.'); return; }
+  try{
     if (window.SQL_READY) await window.SQL_READY;
     if (!window.SQL) throw new Error('sql.js nicht verfügbar');
-    // GeoPackage-API sollte nach defer da sein, sonst kurz warten
     if (!window.GeoPackage){
       const t0=performance.now(); while(!window.GeoPackage && performance.now()-t0<3000){ await new Promise(r=>setTimeout(r,100)); }
     }
@@ -645,7 +679,7 @@ document.getElementById('exportGPKG').onclick = async () => {
 
     const gp = await GeoPackage.GeoPackageAPI.create();
 
-    // EPSG:25832 SRS anlegen (idempotent)
+    // EPSG:25832 SRS (idempotent)
     const srsDao = gp.getSpatialReferenceSystemDao();
     try{
       await srsDao.create({
@@ -656,24 +690,25 @@ document.getElementById('exportGPKG').onclick = async () => {
         definition:'PROJCS["ETRS89 / UTM zone 32N",GEOGCS["ETRS89",DATUM["ETRS_1989",SPHEROID["GRS 1980",6378137,298.257222101,AUTHORITY["EPSG","7019"]],AUTHORITY["EPSG","6258"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",9],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","25832"]]',
         description:'EPSG:25832'
       });
-    }catch(e){/* existiert evtl. bereits */}
+    }catch(e){/* existiert evtl. schon */}
+
     await gp.createFeatureTable('punkte',{geometryColumn:'geom',geometryType:'POINT',srsId:25832,properties:{name:'TEXT'}});
     await gp.createFeatureTable('linien',{geometryColumn:'geom',geometryType:'LINESTRING',srsId:25832,properties:{name:'TEXT'}});
 
-    for (const p of lastResult.points){
+    for(const p of lastResult.points){
       await gp.insertFeature('punkte',{geom:{type:'Point',coordinates:[p.x,p.y]},properties:{name:p.name}});
     }
-    for (const l of lastResult.lines){
-      const coords = l.points ? l.points.map(q=>[q.x,q.y]) : [[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
+    for(const l of lastResult.lines){
+      const coords=l.points?l.points.map(q=>[q.x,q.y]):[[l.p1.x,l.p1.y],[l.p2.x,l.p2.y]];
       await gp.insertFeature('linien',{geom:{type:'LineString',coordinates:coords},properties:{name:l.name}});
     }
 
-    const blob = await gp.export();
-    const base=(fnameInput.value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
+    const blob=await gp.export();
+    const base=(document.getElementById('fname').value||'Dateiname').replace(/[\\/:*?"<>|]+/g,'_');
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${base}.gpkg`; a.click(); URL.revokeObjectURL(a.href);
-  } catch (e) {
+  }catch(e){
     console.error('GPKG-Export Fehler:', e);
-    alert(`GPKG-Export fehlgeschlagen: ${e.message || e}`);
+    alert(`GPKG-Export fehlgeschlagen: ${e.message||e}`);
   }
 };
 
