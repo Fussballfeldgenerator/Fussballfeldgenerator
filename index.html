@@ -27,6 +27,7 @@
   input[type=text]{width:13rem}
   .disabled-note{font-size:.78rem;opacity:.8;margin-left:.25rem}
   .scenario-note{font-size:.78rem;opacity:.85}
+  .warn{color:#b45309;background:#fff7ed;border:1px solid #fed7aa;padding:.25rem .4rem;border-radius:.35rem}
   @media (max-width:480px){ .ctrl{font-size:.8rem} button,select,input{font-size:.8rem} input[type=text]{width:11rem} }
 </style>
 </head>
@@ -65,6 +66,13 @@
     <input id="width"  type="number" step="0.1" min="45" max="90"  placeholder="45–90" value="65">
     <span id="presetNote" class="disabled-note" style="display:none;">(vorgegeben durch Szenario)</span>
   </label>
+
+  <!-- Sonder-Option für verkleinertes Großfeld bei kurzen Großfeldern -->
+  <label id="dockWrap" style="display:none;">
+    <input type="checkbox" id="dockOption">
+    vGF an Großfeld-Torlinie andocken
+  </label>
+  <span id="dockWarn" class="warn" style="display:none;"></span>
 
   <label>Filename: <input id="fname" type="text" value="X-Platz_SVU"></label>
   <button id="reset">Neu</button>
@@ -172,6 +180,9 @@ const kfScenario=document.getElementById('kfScenario');
 const presetNote=document.getElementById('presetNote');
 const kfInfo=document.getElementById('kfInfo');
 const fnameInput=document.getElementById('fname');
+const dockWrap=document.getElementById('dockWrap');
+const dockOption=document.getElementById('dockOption');
+const dockWarn=document.getElementById('dockWarn');
 
 /* ---- Kleinfeld-Szenario-Maße ---- */
 const scenarioDims={
@@ -208,9 +219,33 @@ function updateInputLocking(){
   widthInput.disabled=isKF;
   presetNote.style.display=isKF?'inline':'none';
   updateScenarioInfo();
+  updateDockAvailability();
 }
 modeSel.addEventListener('change',()=>{ updateInputLocking(); if(p1&&p2) recompute(); });
 kfScenario.addEventListener('change',()=>{ updateScenarioInfo(); if(p1&&p2) recompute(); });
+lengthInput.addEventListener('input',()=>{ if(modeSel.value!=='kleinfeld'){ validateGrossfeldInputs(); updateDockAvailability(); if(p1&&p2) recompute(); }});
+
+/* ---- Docking-UI: nur wenn L < 103 und (L-33) < 70 ---- */
+function updateDockAvailability(){
+  const isVGF = (modeSel.value==='verkleinertes_grossfeld');
+  if(!isVGF){ dockWrap.style.display='none'; dockWarn.style.display='none'; dockOption.checked=false; return; }
+  const L = Math.round(parseFloat(lengthInput.value||'105'));
+  const vGF_len_standard = L - 33; // 16.5 + 16.5
+  if(L < 103 && vGF_len_standard < 70){
+    dockWrap.style.display='inline-flex';
+    dockWarn.style.display='inline';
+    dockWarn.textContent = `Hinweis: vGF-Länge wäre ${vGF_len_standard.toFixed(0)} m (<70 m). Option „andocken“ erlaubt L = ${ (L-16.5).toFixed(1) } m.`;
+  }else if(L < 103){
+    // L<103, aber trotzdem >=70 (z.B. 100 -> 67? nein; 102 -> 69); wir zeigen Option trotzdem an, Warnung optional
+    dockWrap.style.display='inline-flex';
+    dockWarn.style.display='inline';
+    dockWarn.textContent = `Empfehlung: vGF-Länge (Standard) = ${vGF_len_standard.toFixed(0)} m. „Andocken“ ergibt ${ (L-16.5).toFixed(1) } m.`;
+  }else{
+    dockWrap.style.display='none';
+    dockWarn.style.display='none';
+    dockOption.checked=false;
+  }
+}
 
 /* ---- Geometrie-Helpers ---- */
 const norm=(dx,dy)=>{const L=Math.hypot(dx,dy)||1;return{ux:dx/L,uy:dy/L,L}};
@@ -228,7 +263,7 @@ function lineIntersection(a1,a2,b1,b2){
   return {x:px,y:py};
 }
 
-/* ---- Großfeld: Torbereiche (5m-Ecken, 16,5m-Ecken, Elfer) ---- */
+/* ---- Großfeld: Torbereiche ---- */
 function drawTorbereich(mitte,ux,uy,nx,ny,prefix,out){
   const torHalb=7.32/2;
   const tor_r={x:mitte.x+nx*torHalb,y:mitte.y+ny*torHalb};
@@ -329,20 +364,35 @@ function drawSchusszonen(UL,UR,OL,OR, ux,uy, namePrefix, out){
   return {bottomA,bottomB,topA,topB};
 }
 
-/* ---- Verkleinertes Großfeld ---- */
-function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
-  const bL={x:UL.x+ux*16.5, y:UL.y+uy*16.5};
-  const bR={x:UR.x+ux*16.5, y:UR.y+uy*16.5};
-  const tL={x:OL.x-ux*16.5, y:OL.y-uy*16.5};
-  const tR={x:OR.x-ux*16.5, y:OR.y-uy*16.5};
-  addLine(bL,bR,"(vGF) Torlinie unten (16,5 m)",out);
-  addLine(tL,tR,"(vGF) Torlinie oben (16,5 m)",out);
+/* ---- Verkleinertes Großfeld (mit optionalem Andocken) ---- */
+function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out){
+  // Torlinien
+  let bL, bR, tL, tR;
+  if(dock){
+    // Untere vGF-Torlinie liegt auf Großfeld-Torlinie (UL—UR)
+    bL = {x:UL.x, y:UL.y};
+    bR = {x:UR.x, y:UR.y};
+    // Obere vGF-Torlinie: 16,5 m vor oberer Großfeld-Torlinie
+    tL = {x:OL.x-ux*16.5, y:OL.y-uy*16.5};
+    tR = {x:OR.x-ux*16.5, y:OR.y-uy*16.5};
+  }else{
+    // beide 16,5 m von den Großfeld-Torlinien
+    bL={x:UL.x+ux*16.5, y:UL.y+uy*16.5};
+    bR={x:UR.x+ux*16.5, y:UR.y+uy*16.5};
+    tL={x:OL.x-ux*16.5, y:OL.y-uy*16.5};
+    tR={x:OR.x-ux*16.5, y:OR.y-uy*16.5};
+  }
 
+  addLine(bL,bR,"(vGF) Torlinie unten",out);
+  addLine(tL,tR,"(vGF) Torlinie oben",out);
+
+  // Mittelpunkte Torlinien
   const mB={x:(bL.x+bR.x)/2, y:(bL.y+bR.y)/2};
   const mT={x:(tL.x+tR.x)/2, y:(tL.y+tR.y)/2};
   addPt(mB,"(vGF) Tor-Mittelpunkt unten",out);
   addPt(mT,"(vGF) Tor-Mittelpunkt oben",out);
 
+  // Pfosten (5 m): ±2,5 m entlang Torlinie
   const pBR={x:mB.x+nx*2.5, y:mB.y+ny*2.5};
   const pBL={x:mB.x-nx*2.5, y:mB.y-ny*2.5};
   const pTR={x:mT.x+nx*2.5, y:mT.y+ny*2.5};
@@ -354,6 +404,7 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addLine(pBL,pBR,"(vGF) Torlinie unten (5 m)",out);
   addLine(pTL,pTR,"(vGF) Torlinie oben (5 m)",out);
 
+  // Strafraum-Fußpunkte ±14,5 m (auf JEDEM Tor)
   const sFB_R={x:mB.x+nx*14.5, y:mB.y+ny*14.5};
   const sFB_L={x:mB.x-nx*14.5, y:mB.y-ny*14.5};
   const sFT_R={x:mT.x+nx*14.5, y:mT.y+ny*14.5};
@@ -363,6 +414,7 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addPt(sFT_R,"(vGF) Strafraum-Fusspunkt oben rechts",out);
   addPt(sFT_L,"(vGF) Strafraum-Fusspunkt oben links",out);
 
+  // 12 m orthogonal vom Fußpunkt (parallel Seitenlinie)
   const cB_R={x:sFB_R.x+ux*12, y:sFB_R.y+uy*12};
   const cB_L={x:sFB_L.x+ux*12, y:sFB_L.y+uy*12};
   const cT_R={x:sFT_R.x-ux*12, y:sFT_R.y-uy*12};
@@ -376,30 +428,34 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out){
   addPt(cT_R,"(vGF) Strafraum-Ecke oben rechts",out);
   addPt(cT_L,"(vGF) Strafraum-Ecke oben links",out);
 
+  // Frontlinien (parallel zu Torlinien)
   addLine(cB_L,cB_R,"(vGF) Strafraum-Front unten",out);
   addLine(cT_L,cT_R,"(vGF) Strafraum-Front oben",out);
 
+  // Seitenlinien-Position: ±24,5 m (Spielfeldbreite 49 m)
   const sB_R={x:mB.x+nx*24.5, y:mB.y+ny*24.5};
   const sB_L={x:mB.x-nx*24.5, y:mB.y-ny*24.5};
   const sT_R={x:mT.x+nx*24.5, y:mT.y+ny*24.5};
   const sT_L={x:mT.x-nx*24.5, y:mT.y-ny*24.5};
+
+  // Seitenlinien
   addLine(sB_L,sT_L,"(vGF) Seitenlinie links",out);
   addLine(sB_R,sT_R,"(vGF) Seitenlinie rechts",out);
 
+  // Spielfeld-Ecken
   addPt(sB_L,"(vGF) Spielfeldecke unten links",out);
   addPt(sB_R,"(vGF) Spielfeldecke unten rechts",out);
   addPt(sT_L,"(vGF) Spielfeldecke oben links",out);
   addPt(sT_R,"(vGF) Spielfeldecke oben rechts",out);
 
+  // Mittellinie + Anstoßpunkt
   const midLeft ={x:(sB_L.x+sT_L.x)/2, y:(sB_L.y+sT_L.y)/2};
   const midRight={x:(sB_R.x+sT_R.x)/2, y:(sB_R.y+sT_R.y)/2};
   addLine(midLeft,midRight,"(vGF) Mittellinie",out);
   const kickoff={x:(midLeft.x+midRight.x)/2, y:(midLeft.y+midRight.y)/2};
   addPt(kickoff,"(vGF) Anstoßpunkt",out);
 
-  addPt(midLeft,"(vGF) Seitenlinien-Mittelpunkt links",out);
-  addPt(midRight,"(vGF) Seitenlinien-Mittelpunkt rechts",out);
-
+  // Strafstoßpunkte 9 m ins Feld (von jeder Torlinie)
   const penB={x:mB.x+ux*9, y:mB.y+uy*9};
   const penT={x:mT.x-ux*9, y:mT.y-uy*9};
   addPt(penB,"(vGF) Strafstoßpunkt unten (9 m)",out);
@@ -538,8 +594,10 @@ function recompute(){
   drawTorbereich(mu,ux,uy,nx,ny,"unten",out);
   drawTorbereich(mo,-ux,-uy,nx,ny,"oben",out);
 
+  // Verkleinertes Großfeld: ggf. Docking anwenden
   if(mode==='verkleinertes_grossfeld'){
-    drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny,out);
+    const dock = !!dockOption.checked;
+    drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, dock, out);
   }
 
   lastResult=out;
@@ -589,7 +647,8 @@ function exportBothGeoJSON(){
 }
 
 /* ---- Startzustand UI ---- */
-updateInputLocking();
+function initUI(){ updateInputLocking(); updateDockAvailability(); }
+initUI();
 </script>
 </body>
 </html>
