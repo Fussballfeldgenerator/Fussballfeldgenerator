@@ -259,11 +259,11 @@ function drawMiniGoalsOnEnd(endLeft, endRight, namePrefix, out){
   const ex=endRight.x-endLeft.x, ey=endRight.y-endLeft.y;
   const elen=Math.hypot(ex,ey)||1, vx=ex/elen, vy=ey/elen;
   const L_ref={x:endLeft.x+vx*2, y:endLeft.y+vy*2};
-  const L_other={x=L_ref.x+vx*2, y=L_ref.y+vy*2};
+  const L_other={x:L_ref.x+vx*2, y:L_ref.y+vy*2};
   addPt(L_ref,`${namePrefix} Minitor-Pfosten (links, 2m)`,out);
   addLine(L_ref,L_other,`${namePrefix} Minitor (links, 2m)`,out);
-  const R_ref={x:endRight.x-vx*2, y=endRight.y-vy*2};
-  const R_other={x:R_ref.x-vx*2, y:R_ref.y-vy*2};
+  const R_ref={x:endRight.x-vx*2, y:endRight.y-vy*2};
+  const R_other={x:R_ref.x-vx*2, y:R_ref.y-vy*2}; /* <-- FIX */
   addPt(R_ref,`${namePrefix} Minitor-Pfosten (rechts, 2m)`,out);
   addLine(R_ref,R_other,`${namePrefix} Minitor (rechts, 2m)`,out);
 }
@@ -317,11 +317,12 @@ function drawSchusszonen(UL,UR,OL,OR, ux,uy, namePrefix, out){
   return {bottomA,bottomB,topA,topB};
 }
 
-/* ---- Verkleinertes Großfeld (mit Anti-<70m-Regel & Schnittpunkten) ---- */
+/* ---- Verkleinertes Großfeld (mit Anti-<70m-Regel) ---- */
 function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, useCommonBottom, out){
-  // Torlinien vGF
+  // Wenn useCommonBottom = true, bleibt unten die Großfeld-Torlinie erhalten.
   const bL = useCommonBottom ? {x:UL.x, y:UL.y} : {x:UL.x+ux*16.5, y:UL.y+uy*16.5};
   const bR = useCommonBottom ? {x:UR.x, y:UR.y} : {x:UR.x+ux*16.5, y:UR.y+uy*16.5};
+  // Oben wird immer um 16,5 m nach innen versetzt:
   const tL = {x:OL.x-ux*16.5, y:OL.y-uy*16.5};
   const tR = {x:OR.x-ux*16.5, y:OR.y-uy*16.5};
 
@@ -390,11 +391,9 @@ function drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, useCommonBottom, out){
   const kickoff={x:(midLeft.x+midRight.x)/2, y:(midLeft.y+midRight.y)/2};
   addPt(kickoff,"(vGF) Anstoßpunkt",out);
 
-  // **NEU**: Schnittpunkte Mittellinie & Seitenlinien (explizit)
-  const spL = lineIntersection(midLeft, midRight, sB_L, sT_L);
-  const spR = lineIntersection(midLeft, midRight, sB_R, sT_R);
-  if(spL) addPt(spL,"(vGF) Schnittpunkt Mittellinie & Seitenlinie links",out);
-  if(spR) addPt(spR,"(vGF) Schnittpunkt Mittellinie & Seitenlinie rechts",out);
+  // NEW: Schnittpunkte vGF-Mittellinie ↔ GF-Mittellinie (liegen an den vGF-Seitenlinien)
+  addPt(midLeft,"(vGF) Schnittpunkt Mittellinie vGF ↔ Mittellinie GF (links)",out);
+  addPt(midRight,"(vGF) Schnittpunkt Mittellinie vGF ↔ Mittellinie GF (rechts)",out);
 
   // Strafstoßpunkte (9 m orthogonal von der Torlinie ins Feld)
   const penB={x:mB.x+ux*9, y:mB.y+uy*9};
@@ -492,7 +491,7 @@ function recompute(){
     W=parseFloat(widthInput.value||"65");
   }
 
-  // Außenrechteck (Großfeld)
+  // Außenrechteck (Großfeld, zur Orientierung / Torlinienmittelpunkte)
   const UR={x:P1.x,y:P1.y};
   const OR={x:P1.x+ux*len,y:P1.y+uy*len};
   const OL={x:OR.x+nx*W,y:OR.y+ny*W};
@@ -533,9 +532,11 @@ function recompute(){
 
   // --- Verkleinertes Großfeld ---
   if(mode==='verkleinertes_grossfeld'){
-    const useCommonBottom = (len>=90 && len<=103); // Anti-<70m-Regel
+    // *** ANTI-<70m-Regel: Wenn 90 ≤ L_gross ≤ 103 → gemeinsame Torlinie unten ***
+    const useCommonBottom = (len>=90 && len<=103);
     drawReducedField(UL,UR,OL,OR, ux,uy,nx,ny, useCommonBottom, out);
 
+    // Anzeige der tatsächlich resultierenden vGF-Länge
     const vgfLen = useCommonBottom ? (len - 16.5) : (len - 33.0);
     showStatus(`Variante: ${useCommonBottom ? 'gemeinsame Torlinie' : 'beidseitig +16.5 m'} • vGF-Länge: ${vgfLen.toFixed(1)} m`);
   } else {
@@ -582,7 +583,7 @@ function exportBothGeoJSON(){
     else { continue; }
     fcLines.features.push({
       type:"Feature",
-      properties:{name:l.name,type:"line",length_m(Number(l.len?.toFixed?.(2)||l.len||0))},
+      properties:{name:l.name,type:"line",length_m:Number(l.len?.toFixed?.(2)||l.len||0)},
       geometry:{type:"LineString",coordinates:coords}
     });
   }
