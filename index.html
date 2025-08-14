@@ -584,35 +584,86 @@ document.getElementById('reset').onclick=()=>{
 document.getElementById('geojson').onclick=exportBothGeoJSON;  
   
 /* ---- Export ---- */  
-function exportBothGeoJSON(){  
-  if(!lastResult){alert("Kein Feld erzeugt.");return;}  
-  const pt=(x,y)=>{const g=toLL(x,y);return[g.lon,g.lat]};  
-  const base=(fnameInput.value||"X-Platz_SVU").trim().replace(/[\\/:*?"<>|]+/g,"_");  
-  const ts=new Date().toISOString().replace(/[:.]/g,"-");  
-  const fcPts={type:"FeatureCollection",features:[]};  
-  for(const p of lastResult.points){  
-    fcPts.features.push({type:"Feature",properties:{name:p.name,type:"point"},geometry:{type:"Point",coordinates:pt(p.x,p.y)}});  
-  }  
-  const fcLines={type:"FeatureCollection",features:[]};  
-  for(const l of lastResult.lines){  
-    let coords=[];  
-    if(l.points && l.points.length>1){ coords=l.points.map(q=>pt(q.x,q.y)); }  
-    else if(l.p1 && l.p2){ coords=[pt(l.p1.x,l.p1.y), pt(l.p2.x,l.p2.y)]; }  
-    else { continue; }  
-    fcLines.features.push({  
-      type:"Feature",  
-      properties:{name:l.name,type:"line",length_m:Number(l.len?.toFixed?.(2)||l.len||0)},  
-      geometry:{type:"LineString",coordinates:coords}  
-    });  
-  }  
-  const save=(obj,filename)=>{  
-    const blob=new Blob([JSON.stringify(obj,null,2)],{type:"application/geo+json"});  
-    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href);  
-  };  
-  save(fcPts, `${base}_points_${ts}.geojson`);  
-  save(fcLines, `${base}_lines_${ts}.geojson`);  
-}  
-  
+function exportBothGeoJSON(){
+  if(!lastResult){ alert("Kein Feld erzeugt."); return; }
+
+  // sichere Koordinatenkonvertierung + Validierung
+  const toSafeLL = (x,y) => {
+    const g = toLL(x,y);
+    const lon = Number.isFinite(g.lon) ? Number(g.lon.toFixed(8)) : null;
+    const lat = Number.isFinite(g.lat) ? Number(g.lat.toFixed(8)) : null;
+    return { lon, lat };
+  };
+  const makePos = (x,y) => {
+    const {lon,lat} = toSafeLL(x,y);
+    if(lon===null || lat===null) return null;
+    return [lon,lat];
+  };
+
+  const base = (fnameInput.value||"X-Platz_SVU").trim().replace(/[\\/:*?"<>|]+/g,"_");
+  const ts   = new Date().toISOString().replace(/[:.]/g,"-");
+
+  const fcPts   = { type:"FeatureCollection", features:[] };
+  const fcLines = { type:"FeatureCollection", features:[] };
+
+  let droppedPts = 0, droppedLines = 0;
+
+  // Punkte exportieren (nur gültige)
+  for(const p of lastResult.points){
+    const coords = makePos(p.x, p.y);
+    if(!coords){ droppedPts++; continue; }
+    fcPts.features.push({
+      type:"Feature",
+      properties:{ name:String(p.name||"") , type:"point" },
+      geometry:{ type:"Point", coordinates: coords }
+    });
+  }
+
+  // Linien exportieren (nur gültige Segmente)
+  for(const l of lastResult.lines){
+    let coords = [];
+    if(l.points && Array.isArray(l.points) && l.points.length>1){
+      for(const q of l.points){
+        const c = makePos(q.x,q.y);
+        if(!c){ coords = null; break; }
+        coords.push(c);
+      }
+    } else if(l.p1 && l.p2){
+      const a = makePos(l.p1.x,l.p1.y);
+      const b = makePos(l.p2.x,l.p2.y);
+      if(!a || !b) coords = null; else coords = [a,b];
+    } else {
+      coords = null;
+    }
+
+    if(!coords){ droppedLines++; continue; }
+    const L = (typeof l.len === "number" && Number.isFinite(l.len)) ? Number(l.len.toFixed(2)) : 0;
+    fcLines.features.push({
+      type:"Feature",
+      properties:{ name:String(l.name||""), type:"line", length_m: L },
+      geometry:{ type:"LineString", coordinates: coords }
+    });
+  }
+
+  // speichern
+  const save = (obj,filename) => {
+    const blob = new Blob([JSON.stringify(obj)], { type:"application/geo+json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  save(fcPts,   `${base}_points_${ts}.geojson`);
+  save(fcLines, `${base}_lines_${ts}.geojson`);
+
+  // kurzer Hinweis, falls etwas verworfen wurde
+  if(droppedPts || droppedLines){
+    alert(`Hinweis: ${droppedPts} Punkt(e) und ${droppedLines} Linie(n) wegen ungültiger Koordinaten nicht exportiert.`);
+  }
+}
+ 
 /* ---- Startzustand ---- */  
 updateInputLocking();  
 </script>  
